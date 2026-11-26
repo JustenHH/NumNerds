@@ -1,0 +1,256 @@
+{
+  "entities": {
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private user account record isolating PII such as email.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "GuildMember": {
+      "title": "GuildMember",
+      "description": "Approved Numlock Nerds guildmate identity (grants access to guild collections).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "battleTag": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "guildId", "displayName", "battleTag", "createdAt", "updatedAt"]
+    },
+    "InviteCode": {
+      "title": "InviteCode",
+      "description": "Shareable invite code created by an admin to admit friends into Numlock Nerds.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 4, "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "note": { "type": "string", "maxLength": 60 },
+        "maxUses": { "type": "integer" },
+        "usesCount": { "type": "integer" },
+        "active": { "type": "boolean" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "guildId", "note", "maxUses", "usesCount", "active", "createdBy", "createdAt", "updatedAt"]
+    },
+    "EmailInvite": {
+      "title": "EmailInvite",
+      "description": "Email-targeted invitation keyed by lowercase email SHA-256 hash.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "note": { "type": "string", "maxLength": 60 },
+        "active": { "type": "boolean" },
+        "redeemed": { "type": "boolean" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "guildId", "email", "note", "active", "redeemed", "createdBy", "createdAt", "updatedAt"]
+    },
+    "InviteRedemption": {
+      "title": "InviteRedemption",
+      "description": "Atomic proof of invitation redemption binding a user UID to an invite.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "inviteType": { "type": "string", "enum": ["code", "email"] },
+        "inviteId": { "type": "string", "minLength": 4, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "inviteType", "inviteId", "createdAt"]
+    },
+    "Character": {
+      "title": "Character",
+      "description": "A World of Warcraft: Forever player character owned by a guildmate.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "realm": { "type": "string", "maxLength": 40 },
+        "faction": { "type": "string", "enum": ["Alliance", "Horde"] },
+        "race": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "wowClass": { "type": "string", "enum": ["Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock", "Druid"] },
+        "level": { "type": "integer" },
+        "xpPercent": { "type": "integer" },
+        "itemLevel": { "type": "integer" },
+        "primaryRole": { "type": "string", "enum": ["Tank", "Healer", "DPS"] },
+        "secondaryRole": { "type": "string", "enum": ["Tank", "Healer", "DPS", "None"] },
+        "prof1Name": { "type": "string", "maxLength": 32 },
+        "prof1Skill": { "type": "integer" },
+        "prof2Name": { "type": "string", "maxLength": 32 },
+        "prof2Skill": { "type": "integer" },
+        "specNotes": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "guildId", "ownerId", "ownerName", "name", "realm", "faction", "race",
+        "wowClass", "level", "xpPercent", "itemLevel", "primaryRole", "secondaryRole",
+        "prof1Name", "prof1Skill", "prof2Name", "prof2Skill", "specNotes", "createdAt", "updatedAt"
+      ]
+    },
+    "DungeonEvent": {
+      "title": "DungeonEvent",
+      "description": "A proposed dungeon, raid, or quest group event with level requirements.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "creatorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "creatorName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "dungeonId": { "type": "string", "minLength": 1, "maxLength": 48 },
+        "dungeonName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "category": { "type": "string", "enum": ["Dungeon", "Raid", "World", "Quest"] },
+        "partySize": { "type": "integer" },
+        "requirementType": { "type": "string", "enum": ["level", "ilvl"] },
+        "requiredLevel": { "type": "integer" },
+        "scheduledAt": { "type": "string", "minLength": 10, "maxLength": 32 },
+        "timeNotes": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["open", "locked", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "guildId", "creatorId", "creatorName", "title", "dungeonId", "dungeonName",
+        "category", "partySize", "requirementType", "requiredLevel", "scheduledAt",
+        "timeNotes", "description", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "EventSignup": {
+      "title": "EventSignup",
+      "description": "A guildmate's character commitment for a scheduled event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "eventId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "characterId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "characterName": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "wowClass": { "type": "string", "enum": ["Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock", "Druid"] },
+        "characterLevel": { "type": "integer" },
+        "characterItemLevel": { "type": "integer" },
+        "preferredRole": { "type": "string", "enum": ["Tank", "Healer", "DPS"] },
+        "altRoles": { "type": "array" },
+        "commitment": { "type": "string", "enum": ["Committed", "Tentative"] },
+        "note": { "type": "string", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "eventId", "guildId", "userId", "userName", "characterId", "characterName",
+        "wowClass", "characterLevel", "characterItemLevel", "preferredRole", "altRoles",
+        "commitment", "note", "createdAt", "updatedAt"
+      ]
+    },
+    "GuildMaterial": {
+      "title": "GuildMaterial",
+      "description": "Shared profession materials, consumables, or attunement keys tracked by the guild.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "creatorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "itemName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "category": { "type": "string", "enum": ["Ore & Bars", "Herbs & Alchemy", "Cloth & Leather", "Enchanting", "Keys & Attunement", "Consumables"] },
+        "quantityHave": { "type": "integer" },
+        "quantityNeeded": { "type": "integer" },
+        "holderName": { "type": "string", "maxLength": 40 },
+        "notes": { "type": "string", "maxLength": 160 },
+        "updatedByName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "guildId", "creatorId", "itemName", "category", "quantityHave",
+        "quantityNeeded", "holderName", "notes", "updatedByName", "createdAt", "updatedAt"
+      ]
+    },
+    "LootRecord": {
+      "title": "LootRecord",
+      "description": "Logged loot distribution entry for guild transparency.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guildId": { "type": "string", "enum": ["numlock-nerds"] },
+        "loggerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "itemName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "itemQuality": { "type": "string", "enum": ["Uncommon", "Rare", "Epic", "Legendary"] },
+        "sourceName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "recipientCharacter": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "recipientOwner": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "ruleMethod": { "type": "string", "enum": ["Main Spec", "Off Spec", "Need / Greed", "Round Robin", "Guild Bank"] },
+        "notes": { "type": "string", "maxLength": 160 },
+        "awardedDate": { "type": "string", "minLength": 8, "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "guildId", "loggerId", "itemName", "itemQuality", "sourceName",
+        "recipientCharacter", "recipientOwner", "ruleMethod", "notes", "awardedDate",
+        "createdAt", "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Private user PII document readable/writable only by the owner."
+    },
+    "/members/{userId}": {
+      "schema": { "$ref": "#/entities/GuildMember" },
+      "description": "Approved Numlock Nerds guildmates."
+    },
+    "/invites/{inviteCode}": {
+      "schema": { "$ref": "#/entities/InviteCode" },
+      "description": "Admin-issued invite codes for joining Numlock Nerds."
+    },
+    "/emailInvites/{emailHash}": {
+      "schema": { "$ref": "#/entities/EmailInvite" },
+      "description": "Admin-issued email invitations keyed by SHA-256 of lowercase email."
+    },
+    "/redemptions/{userId}": {
+      "schema": { "$ref": "#/entities/InviteRedemption" },
+      "description": "Atomic invite redemption records."
+    },
+    "/characters/{characterId}": {
+      "schema": { "$ref": "#/entities/Character" },
+      "description": "All guildmate characters in World of Warcraft: Forever."
+    },
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/DungeonEvent" },
+      "description": "Scheduled dungeon, raid, and quest run proposals."
+    },
+    "/events/{eventId}/signups/{signupId}": {
+      "schema": { "$ref": "#/entities/EventSignup" },
+      "description": "Character signups and role preferences scoped under an event."
+    },
+    "/materials/{materialId}": {
+      "schema": { "$ref": "#/entities/GuildMaterial" },
+      "description": "Shared profession materials, consumables, and key tracker."
+    },
+    "/loot/{lootId}": {
+      "schema": { "$ref": "#/entities/LootRecord" },
+      "description": "Shared guild loot distribution history."
+    }
+  }
+}

@@ -1,0 +1,619 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Global Helpers
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'justen.huiting@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isGuildMember() {
+      return isAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid))
+      );
+    }
+
+    function isValidGuild(guildId) {
+      return guildId is string && guildId == 'numlock-nerds';
+    }
+
+    function isValidClass(c) {
+      return c in ['Warrior', 'Paladin', 'Hunter', 'Rogue', 'Priest', 'Shaman', 'Mage', 'Warlock', 'Druid'];
+    }
+
+    function isValidRole(r) {
+      return r in ['Tank', 'Healer', 'DPS'];
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints
+    // =========================================================================
+    function isValidUserPrivate(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMember(data, userId) {
+      return data.keys().hasAll(['uid', 'guildId', 'displayName', 'battleTag', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'guildId', 'displayName', 'battleTag', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && isValidGuild(data.guildId)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 40
+        && data.battleTag is string && data.battleTag.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInviteCode(data, inviteCode) {
+      return data.keys().hasAll(['code', 'guildId', 'note', 'maxUses', 'usesCount', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['code', 'guildId', 'note', 'maxUses', 'usesCount', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.code) && data.code == inviteCode
+        && data.code.size() >= 4 && data.code.size() <= 32
+        && isValidGuild(data.guildId)
+        && data.note is string && data.note.size() <= 60
+        && data.maxUses is int && data.maxUses >= 1 && data.maxUses <= 50
+        && data.usesCount is int && data.usesCount >= 0 && data.usesCount <= data.maxUses
+        && data.active is bool
+        && isValidId(data.createdBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEmailInvite(data, emailHash) {
+      return data.keys().hasAll(['id', 'guildId', 'email', 'note', 'active', 'redeemed', 'createdBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'guildId', 'email', 'note', 'active', 'redeemed', 'createdBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.id) && data.id == emailHash
+        && data.id.size() >= 16 && data.id.size() <= 128
+        && isValidGuild(data.guildId)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.note is string && data.note.size() <= 60
+        && data.active is bool
+        && data.redeemed is bool
+        && isValidId(data.createdBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRedemption(data, userId) {
+      return data.keys().hasAll(['uid', 'inviteType', 'inviteId', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'inviteType', 'inviteId', 'createdAt'])
+        && isValidId(data.uid) && data.uid == userId
+        && data.inviteType in ['code', 'email']
+        && isValidId(data.inviteId) && data.inviteId.size() >= 4 && data.inviteId.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCharacter(data, charId) {
+      return data.keys().hasAll([
+          'id', 'guildId', 'ownerId', 'ownerName', 'name', 'realm', 'faction', 'race',
+          'wowClass', 'level', 'xpPercent', 'itemLevel', 'primaryRole', 'secondaryRole',
+          'prof1Name', 'prof1Skill', 'prof2Name', 'prof2Skill', 'specNotes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'guildId', 'ownerId', 'ownerName', 'name', 'realm', 'faction', 'race',
+          'wowClass', 'level', 'xpPercent', 'itemLevel', 'primaryRole', 'secondaryRole',
+          'prof1Name', 'prof1Skill', 'prof2Name', 'prof2Skill', 'specNotes', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == charId
+        && isValidGuild(data.guildId)
+        && isValidId(data.ownerId)
+        && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 24
+        && data.realm is string && data.realm.size() <= 40
+        && data.faction in ['Alliance', 'Horde']
+        && data.race is string && data.race.size() >= 2 && data.race.size() <= 24
+        && isValidClass(data.wowClass)
+        && data.level is int && data.level >= 1 && data.level <= 60
+        && data.xpPercent is int && data.xpPercent >= 0 && data.xpPercent <= 99
+        && data.itemLevel is int && data.itemLevel >= 0 && data.itemLevel <= 100
+        && isValidRole(data.primaryRole)
+        && data.secondaryRole in ['Tank', 'Healer', 'DPS', 'None']
+        && data.prof1Name is string && data.prof1Name.size() <= 32
+        && data.prof1Skill is int && data.prof1Skill >= 0 && data.prof1Skill <= 300
+        && data.prof2Name is string && data.prof2Name.size() <= 32
+        && data.prof2Skill is int && data.prof2Skill >= 0 && data.prof2Skill <= 300
+        && data.specNotes is string && data.specNotes.size() <= 120
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEvent(data, eventId) {
+      return data.keys().hasAll([
+          'id', 'guildId', 'creatorId', 'creatorName', 'title', 'dungeonId', 'dungeonName',
+          'category', 'partySize', 'requirementType', 'requiredLevel', 'scheduledAt',
+          'timeNotes', 'description', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'guildId', 'creatorId', 'creatorName', 'title', 'dungeonId', 'dungeonName',
+          'category', 'partySize', 'requirementType', 'requiredLevel', 'scheduledAt',
+          'timeNotes', 'description', 'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == eventId
+        && isValidGuild(data.guildId)
+        && isValidId(data.creatorId)
+        && data.creatorName is string && data.creatorName.size() >= 1 && data.creatorName.size() <= 40
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 80
+        && data.dungeonId is string && data.dungeonId.size() >= 1 && data.dungeonId.size() <= 48
+        && data.dungeonName is string && data.dungeonName.size() >= 1 && data.dungeonName.size() <= 64
+        && data.category in ['Dungeon', 'Raid', 'World', 'Quest']
+        && data.partySize is int && data.partySize >= 2 && data.partySize <= 40
+        && data.requirementType in ['level', 'ilvl']
+        && data.requiredLevel is int && data.requiredLevel >= 1 && data.requiredLevel <= 100
+        && data.scheduledAt is string && data.scheduledAt.size() >= 10 && data.scheduledAt.size() <= 32
+        && data.timeNotes is string && data.timeNotes.size() <= 120
+        && data.description is string && data.description.size() <= 300
+        && data.status in ['open', 'locked', 'completed', 'cancelled']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSignup(data, eventId, signupId) {
+      return data.keys().hasAll([
+          'id', 'eventId', 'guildId', 'userId', 'userName', 'characterId', 'characterName',
+          'wowClass', 'characterLevel', 'characterItemLevel', 'preferredRole', 'altRoles',
+          'commitment', 'note', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'eventId', 'guildId', 'userId', 'userName', 'characterId', 'characterName',
+          'wowClass', 'characterLevel', 'characterItemLevel', 'preferredRole', 'altRoles',
+          'commitment', 'note', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == signupId
+        && isValidId(data.eventId) && data.eventId == eventId
+        && isValidGuild(data.guildId)
+        && isValidId(data.userId)
+        && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 40
+        && isValidId(data.characterId)
+        && data.characterName is string && data.characterName.size() >= 2 && data.characterName.size() <= 24
+        && isValidClass(data.wowClass)
+        && data.characterLevel is int && data.characterLevel >= 1 && data.characterLevel <= 60
+        && data.characterItemLevel is int && data.characterItemLevel >= 0 && data.characterItemLevel <= 100
+        && isValidRole(data.preferredRole)
+        && data.altRoles is list
+        && data.altRoles.size() <= 3
+        && data.altRoles.hasOnly(['Tank', 'Healer', 'DPS'])
+        && (data.altRoles.size() == 0 || data.altRoles[0] is string)
+        && data.commitment in ['Committed', 'Tentative']
+        && data.note is string && data.note.size() <= 160
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMaterial(data, materialId) {
+      return data.keys().hasAll([
+          'id', 'guildId', 'creatorId', 'itemName', 'category', 'quantityHave',
+          'quantityNeeded', 'holderName', 'notes', 'updatedByName', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'guildId', 'creatorId', 'itemName', 'category', 'quantityHave',
+          'quantityNeeded', 'holderName', 'notes', 'updatedByName', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == materialId
+        && isValidGuild(data.guildId)
+        && isValidId(data.creatorId)
+        && data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 60
+        && data.category in ['Ore & Bars', 'Herbs & Alchemy', 'Cloth & Leather', 'Enchanting', 'Keys & Attunement', 'Consumables']
+        && data.quantityHave is int && data.quantityHave >= 0 && data.quantityHave <= 99999
+        && data.quantityNeeded is int && data.quantityNeeded >= 0 && data.quantityNeeded <= 99999
+        && data.holderName is string && data.holderName.size() <= 40
+        && data.notes is string && data.notes.size() <= 160
+        && data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLoot(data, lootId) {
+      return data.keys().hasAll([
+          'id', 'guildId', 'loggerId', 'itemName', 'itemQuality', 'sourceName',
+          'recipientCharacter', 'recipientOwner', 'ruleMethod', 'notes', 'awardedDate',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'guildId', 'loggerId', 'itemName', 'itemQuality', 'sourceName',
+          'recipientCharacter', 'recipientOwner', 'ruleMethod', 'notes', 'awardedDate',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == lootId
+        && isValidGuild(data.guildId)
+        && isValidId(data.loggerId)
+        && data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 64
+        && data.itemQuality in ['Uncommon', 'Rare', 'Epic', 'Legendary']
+        && data.sourceName is string && data.sourceName.size() >= 1 && data.sourceName.size() <= 64
+        && data.recipientCharacter is string && data.recipientCharacter.size() >= 1 && data.recipientCharacter.size() <= 24
+        && data.recipientOwner is string && data.recipientOwner.size() >= 1 && data.recipientOwner.size() <= 40
+        && data.ruleMethod in ['Main Spec', 'Off Spec', 'Need / Greed', 'Round Robin', 'Guild Bank']
+        && data.notes is string && data.notes.size() <= 160
+        && data.awardedDate is string && data.awardedDate.size() >= 8 && data.awardedDate.size() <= 20
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // =========================================================================
+    // Collection Rules
+    // =========================================================================
+
+    // Private PII user collection
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserPrivate(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existsAfter(/databases/$(database)/documents/members/$(userId)));
+      allow update: if isValidId(userId)
+        && isValidUserPrivate(incoming(), userId)
+        && (isOwner(userId) || isAdmin())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Approved guildmates (invite-only unless Admin)
+    match /members/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || (isGuildMember() && resource != null && isValidGuild(existing().guildId)));
+      allow list: if isGuildMember() && isValidGuild(existing().guildId);
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidMember(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          existsAfter(/databases/$(database)/documents/redemptions/$(userId))
+        );
+      allow update: if isValidId(userId)
+        && isValidMember(incoming(), userId)
+        && ((isOwner(userId) && isGuildMember()) || isAdmin())
+        && incoming().uid == existing().uid
+        && incoming().guildId == existing().guildId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'battleTag', 'updatedAt']);
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Shareable Invite Codes (Admin-created; verified users can fetch exact code to redeem)
+    match /invites/{inviteCode} {
+      allow get: if isValidId(inviteCode) && isVerifiedUser();
+      allow list: if isAdmin();
+      allow create: if isValidId(inviteCode)
+        && isAdmin()
+        && isValidInviteCode(incoming(), inviteCode)
+        && incoming().createdBy == request.auth.uid
+        && incoming().usesCount == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(inviteCode)
+        && isValidInviteCode(incoming(), inviteCode)
+        && incoming().code == existing().code
+        && incoming().guildId == existing().guildId
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['note', 'maxUses', 'active', 'updatedAt'])) ||
+          (
+            isVerifiedUser()
+            && existing().active == true
+            && existing().usesCount < existing().maxUses
+            && incoming().usesCount == existing().usesCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['usesCount', 'updatedAt'])
+            && !exists(/databases/$(database)/documents/redemptions/$(request.auth.uid))
+            && existsAfter(/databases/$(database)/documents/redemptions/$(request.auth.uid))
+          )
+        );
+      allow delete: if isValidId(inviteCode) && isAdmin();
+    }
+
+    // Targeted Email Invites (keyed by SHA-256 of lowercase email)
+    match /emailInvites/{emailHash} {
+      allow get: if isValidId(emailHash) && isVerifiedUser() && (
+        isAdmin() ||
+        resource == null ||
+        (request.auth.token.email is string && existing().email == request.auth.token.email.lower())
+      );
+      allow list: if isAdmin();
+      allow create: if isValidId(emailHash)
+        && isAdmin()
+        && isValidEmailInvite(incoming(), emailHash)
+        && incoming().createdBy == request.auth.uid
+        && incoming().redeemed == false
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(emailHash)
+        && isValidEmailInvite(incoming(), emailHash)
+        && incoming().id == existing().id
+        && incoming().guildId == existing().guildId
+        && incoming().email == existing().email
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['note', 'active', 'redeemed', 'updatedAt'])) ||
+          (
+            isVerifiedUser()
+            && existing().active == true
+            && existing().redeemed == false
+            && request.auth.token.email is string
+            && existing().email == request.auth.token.email.lower()
+            && incoming().redeemed == true
+            && incoming().diff(existing()).affectedKeys().hasOnly(['redeemed', 'updatedAt'])
+            && !exists(/databases/$(database)/documents/redemptions/$(request.auth.uid))
+            && existsAfter(/databases/$(database)/documents/redemptions/$(request.auth.uid))
+          )
+        );
+      allow delete: if isValidId(emailHash) && isAdmin();
+    }
+
+    // Atomic Invite Redemptions
+    match /redemptions/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidRedemption(incoming(), userId)
+        && incoming().createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/members/$(userId))
+        && (
+          (
+            incoming().inviteType == 'code'
+            && exists(/databases/$(database)/documents/invites/$(incoming().inviteId))
+            && get(/databases/$(database)/documents/invites/$(incoming().inviteId)).data.active == true
+            && get(/databases/$(database)/documents/invites/$(incoming().inviteId)).data.usesCount < get(/databases/$(database)/documents/invites/$(incoming().inviteId)).data.maxUses
+            && getAfter(/databases/$(database)/documents/invites/$(incoming().inviteId)).data.usesCount == get(/databases/$(database)/documents/invites/$(incoming().inviteId)).data.usesCount + 1
+          ) ||
+          (
+            incoming().inviteType == 'email'
+            && exists(/databases/$(database)/documents/emailInvites/$(incoming().inviteId))
+            && get(/databases/$(database)/documents/emailInvites/$(incoming().inviteId)).data.active == true
+            && get(/databases/$(database)/documents/emailInvites/$(incoming().inviteId)).data.redeemed == false
+            && request.auth.token.email is string
+            && get(/databases/$(database)/documents/emailInvites/$(incoming().inviteId)).data.email == request.auth.token.email.lower()
+            && getAfter(/databases/$(database)/documents/emailInvites/$(incoming().inviteId)).data.redeemed == true
+          )
+        );
+      allow update: if false;
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Characters (Invite-only guild members)
+    match /characters/{characterId} {
+      allow get: if isValidId(characterId) && isGuildMember() && resource != null && isValidGuild(existing().guildId);
+      allow list: if isGuildMember() && isValidGuild(existing().guildId);
+      allow create: if isValidId(characterId)
+        && isGuildMember()
+        && isValidCharacter(incoming(), characterId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(characterId)
+        && isGuildMember()
+        && isValidCharacter(incoming(), characterId)
+        && (existing().ownerId == request.auth.uid || isAdmin())
+        && incoming().id == existing().id
+        && incoming().guildId == existing().guildId
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'ownerName', 'name', 'realm', 'faction', 'race', 'wowClass',
+            'level', 'xpPercent', 'itemLevel', 'primaryRole', 'secondaryRole',
+            'prof1Name', 'prof1Skill', 'prof2Name', 'prof2Skill', 'specNotes', 'updatedAt'
+          ]) ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'level', 'xpPercent', 'itemLevel', 'prof1Skill', 'prof2Skill', 'updatedAt'
+          ])
+        );
+      allow delete: if isValidId(characterId)
+        && isGuildMember()
+        && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Events (Invite-only guild members)
+    match /events/{eventId} {
+      allow get: if isValidId(eventId) && isGuildMember() && resource != null && isValidGuild(existing().guildId);
+      allow list: if isGuildMember() && isValidGuild(existing().guildId);
+      allow create: if isValidId(eventId)
+        && isGuildMember()
+        && isValidEvent(incoming(), eventId)
+        && incoming().creatorId == request.auth.uid
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(eventId)
+        && isGuildMember()
+        && isValidEvent(incoming(), eventId)
+        && (isAdmin() || existing().status in ['open', 'locked'])
+        && (existing().creatorId == request.auth.uid || isAdmin())
+        && incoming().id == existing().id
+        && incoming().guildId == existing().guildId
+        && incoming().creatorId == existing().creatorId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'dungeonId', 'dungeonName', 'category', 'partySize',
+            'requirementType', 'requiredLevel', 'scheduledAt', 'timeNotes', 'description', 'updatedAt'
+          ]) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        );
+      allow delete: if isValidId(eventId)
+        && isGuildMember()
+        && (existing().creatorId == request.auth.uid || isAdmin());
+
+      // Event Signups subcollection
+      match /signups/{signupId} {
+        allow get: if isValidId(eventId) && isValidId(signupId)
+          && isGuildMember()
+          && resource != null
+          && isValidGuild(existing().guildId);
+        allow list: if isGuildMember() && isValidGuild(existing().guildId);
+        allow create: if isValidId(eventId) && isValidId(signupId)
+          && isGuildMember()
+          && isValidSignup(incoming(), eventId, signupId)
+          && incoming().userId == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/events/$(eventId))
+          && get(/databases/$(database)/documents/events/$(eventId)).data.status in ['open', 'locked']
+          && exists(/databases/$(database)/documents/characters/$(incoming().characterId))
+          && get(/databases/$(database)/documents/characters/$(incoming().characterId)).data.ownerId == request.auth.uid;
+        allow update: if isValidId(eventId) && isValidId(signupId)
+          && isGuildMember()
+          && isValidSignup(incoming(), eventId, signupId)
+          && (existing().userId == request.auth.uid || isAdmin())
+          && incoming().id == existing().id
+          && incoming().eventId == existing().eventId
+          && incoming().guildId == existing().guildId
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin() || (
+              exists(/databases/$(database)/documents/events/$(eventId))
+              && get(/databases/$(database)/documents/events/$(eventId)).data.status in ['open', 'locked']
+              && exists(/databases/$(database)/documents/characters/$(incoming().characterId))
+              && get(/databases/$(database)/documents/characters/$(incoming().characterId)).data.ownerId == request.auth.uid
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'userName', 'characterId', 'characterName', 'wowClass', 'characterLevel',
+                'characterItemLevel', 'preferredRole', 'altRoles', 'commitment', 'note', 'updatedAt'
+              ])
+            )
+          );
+        allow delete: if isValidId(eventId) && isValidId(signupId)
+          && isGuildMember()
+          && (
+            existing().userId == request.auth.uid ||
+            isAdmin() ||
+            (
+              exists(/databases/$(database)/documents/events/$(eventId)) &&
+              get(/databases/$(database)/documents/events/$(eventId)).data.creatorId == request.auth.uid
+            )
+          );
+      }
+    }
+
+    // Shared Profession Materials
+    match /materials/{materialId} {
+      allow get: if isValidId(materialId) && isGuildMember() && resource != null && isValidGuild(existing().guildId);
+      allow list: if isGuildMember() && isValidGuild(existing().guildId);
+      allow create: if isValidId(materialId)
+        && isGuildMember()
+        && isValidMaterial(incoming(), materialId)
+        && incoming().creatorId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(materialId)
+        && isGuildMember()
+        && isValidMaterial(incoming(), materialId)
+        && incoming().id == existing().id
+        && incoming().guildId == existing().guildId
+        && incoming().creatorId == existing().creatorId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().creatorId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'itemName', 'category', 'quantityHave', 'quantityNeeded',
+              'holderName', 'notes', 'updatedByName', 'updatedAt'
+            ])
+          ) ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'quantityHave', 'quantityNeeded', 'holderName', 'notes', 'updatedByName', 'updatedAt'
+          ])
+        );
+      allow delete: if isValidId(materialId)
+        && isGuildMember()
+        && (existing().creatorId == request.auth.uid || isAdmin());
+    }
+
+    // Shared Loot Distribution Log
+    match /loot/{lootId} {
+      allow get: if isValidId(lootId) && isGuildMember() && resource != null && isValidGuild(existing().guildId);
+      allow list: if isGuildMember() && isValidGuild(existing().guildId);
+      allow create: if isValidId(lootId)
+        && isGuildMember()
+        && isValidLoot(incoming(), lootId)
+        && incoming().loggerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(lootId)
+        && isGuildMember()
+        && isValidLoot(incoming(), lootId)
+        && (existing().loggerId == request.auth.uid || isAdmin())
+        && incoming().id == existing().id
+        && incoming().guildId == existing().guildId
+        && incoming().loggerId == existing().loggerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'itemName', 'itemQuality', 'sourceName', 'recipientCharacter',
+            'recipientOwner', 'ruleMethod', 'notes', 'awardedDate', 'updatedAt'
+          ])
+        );
+      allow delete: if isValidId(lootId)
+        && isGuildMember()
+        && (existing().loggerId == request.auth.uid || isAdmin());
+    }
+
+    // Admin registry (read-only from client)
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow write: if false;
+    }
+  }
+}

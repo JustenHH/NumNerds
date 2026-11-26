@@ -1,0 +1,6 @@
+{
+  "name": "Numlock Nerds",
+  "description": "Guild ledger, character progression leaderboard, dungeon planner, and shared resource tracker for Numlock Nerds playing World of Warcraft: Forever.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
