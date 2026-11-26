@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 
 export type BlizzardRegion = 'eu' | 'us' | 'kr' | 'tw';
@@ -35,6 +35,7 @@ interface BlizzardStatusResponse {
 
 interface UseBlizzardSyncOptions {
   user: User | null;
+  autoSyncReady: boolean;
   onApplySyncedCharacters: (
     characters: SyncedCharacterPayload[],
     battleTag: string | null
@@ -43,6 +44,7 @@ interface UseBlizzardSyncOptions {
 
 export function useBlizzardSync({
   user,
+  autoSyncReady,
   onApplySyncedCharacters,
 }: UseBlizzardSyncOptions) {
   const [region, setRegion] = useState<BlizzardRegion>('eu');
@@ -58,19 +60,23 @@ export function useBlizzardSync({
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const autoSyncedUidRef = useRef<string | null>(null);
 
   const fetchWithAuth = useCallback(
     async (url: string, init?: RequestInit) => {
       if (!user) throw new Error('Sign in required.');
       const token = await user.getIdToken();
+      const headers: Record<string, string> = {
+        ...((init?.headers as Record<string, string>) || {}),
+        Authorization: `Bearer ${token}`,
+      };
+      if (init?.body) {
+        headers['Content-Type'] = 'application/json';
+      }
       return fetch(url, {
         ...init,
         credentials: 'include',
-        headers: {
-          ...(init?.headers || {}),
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
       });
     },
     [user]
@@ -96,8 +102,12 @@ export function useBlizzardSync({
   }, [user, fetchWithAuth]);
 
   useEffect(() => {
+    if (!user) {
+      autoSyncedUidRef.current = null;
+      return;
+    }
     void refreshStatus();
-  }, [refreshStatus]);
+  }, [user, refreshStatus]);
 
   const syncNow = useCallback(
     async (targetRegion?: BlizzardRegion) => {
@@ -115,6 +125,7 @@ export function useBlizzardSync({
           error?: string;
           characters?: SyncedCharacterPayload[];
           battleTag?: string | null;
+          diagnostic?: string;
         };
         if (!resp.ok) {
           throw new Error(data.error || 'Failed to sync characters from Battle.net.');
@@ -123,8 +134,10 @@ export function useBlizzardSync({
         const list = data.characters || [];
         if (list.length === 0) {
           setSyncMessage(
-            `Connected to Battle.net (${activeRegion.toUpperCase()}), but no Classic Era characters were returned. Make sure you have logged out of your character recently.`
+            data.diagnostic ||
+              `Connected to Battle.net (${activeRegion.toUpperCase()}), but no WoW: Forever characters were returned. Characters typically appear after reaching level 10 and logging out of the game.`
           );
+          await refreshStatus();
           return;
         }
 
@@ -133,19 +146,34 @@ export function useBlizzardSync({
           data.battleTag || null
         );
         setSyncMessage(
-          `Synced ${list.length} Classic Era character${list.length === 1 ? '' : 's'} (${activeRegion.toUpperCase()}): ${updated} updated, ${created} added.`
+          `Synced ${list.length} WoW: Forever character${list.length === 1 ? '' : 's'} (${activeRegion.toUpperCase()}): ${updated} updated, ${created} added.`
         );
         await refreshStatus();
       } catch (err) {
         setSyncError(
           err instanceof Error ? err.message : 'Battle.net character sync failed.'
         );
+        await refreshStatus();
       } finally {
         setSyncing(false);
       }
     },
     [user, region, fetchWithAuth, onApplySyncedCharacters, refreshStatus]
   );
+
+  useEffect(() => {
+    if (
+      !user ||
+      !autoSyncReady ||
+      !status.connected ||
+      syncing ||
+      autoSyncedUidRef.current === user.uid
+    ) {
+      return;
+    }
+    autoSyncedUidRef.current = user.uid;
+    void syncNow(status.region || region);
+  }, [user, autoSyncReady, status.connected, status.region, syncing, region, syncNow]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -165,7 +193,12 @@ export function useBlizzardSync({
         void syncNow(nextRegion);
       } else if (event.data?.type === 'BLIZZARD_AUTH_ERROR') {
         setConnecting(false);
-        setSyncError('Battle.net authorization was cancelled or declined.');
+        const detail = typeof event.data?.error === 'string' ? event.data.error.trim() : '';
+        setSyncError(
+          detail
+            ? `Battle.net authorization failed: ${detail}`
+            : 'Battle.net authorization was cancelled or declined.'
+        );
       }
     };
 

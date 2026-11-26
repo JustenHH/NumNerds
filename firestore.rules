@@ -140,7 +140,7 @@ service cloud.firestore {
         && isValidGuild(data.guildId)
         && isValidId(data.ownerId)
         && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40
-        && data.name is string && data.name.size() >= 2 && data.name.size() <= 24
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 40
         && data.realm is string && data.realm.size() <= 40
         && data.faction in ['Alliance', 'Horde']
         && data.race is string && data.race.size() >= 2 && data.race.size() <= 24
@@ -206,7 +206,7 @@ service cloud.firestore {
         && isValidId(data.userId)
         && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 40
         && isValidId(data.characterId)
-        && data.characterName is string && data.characterName.size() >= 2 && data.characterName.size() <= 24
+        && data.characterName is string && data.characterName.size() >= 2 && data.characterName.size() <= 40
         && isValidClass(data.wowClass)
         && data.characterLevel is int && data.characterLevel >= 1 && data.characterLevel <= 60
         && data.characterItemLevel is int && data.characterItemLevel >= 0 && data.characterItemLevel <= 100
@@ -261,7 +261,7 @@ service cloud.firestore {
         && data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 64
         && data.itemQuality in ['Uncommon', 'Rare', 'Epic', 'Legendary']
         && data.sourceName is string && data.sourceName.size() >= 1 && data.sourceName.size() <= 64
-        && data.recipientCharacter is string && data.recipientCharacter.size() >= 1 && data.recipientCharacter.size() <= 24
+        && data.recipientCharacter is string && data.recipientCharacter.size() >= 1 && data.recipientCharacter.size() <= 40
         && data.recipientOwner is string && data.recipientOwner.size() >= 1 && data.recipientOwner.size() <= 40
         && data.ruleMethod in ['Main Spec', 'Off Spec', 'Need / Greed', 'Round Robin', 'Guild Bank']
         && data.notes is string && data.notes.size() <= 160

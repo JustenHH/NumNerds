@@ -6,6 +6,7 @@ import {
   CLASS_META,
   getAvailableClassesForFaction,
 } from '../data/foreverData';
+import type { BlizzardRegion } from '../hooks/useBlizzardSync';
 import {
   FIELD_LIMITS,
   Faction,
@@ -17,11 +18,15 @@ import {
 
 interface CharacterModalProps {
   existing?: WowCharacter | null;
+  blizzardRegion?: BlizzardRegion;
+  onChangeRegion?: (r: BlizzardRegion) => void;
   blizzardConfigured?: boolean;
   blizzardConnected?: boolean;
   blizzardBattleTag?: string | null;
   connectingBlizzard?: boolean;
   syncingBlizzard?: boolean;
+  syncError?: string | null;
+  syncMessage?: string | null;
   onConnectBlizzard?: () => Promise<void>;
   onSyncBlizzard?: () => Promise<void>;
   onClose: () => void;
@@ -34,18 +39,34 @@ interface CharacterModalProps {
 
 export const CharacterModal: React.FC<CharacterModalProps> = ({
   existing,
+  blizzardRegion = 'eu',
+  onChangeRegion,
   blizzardConfigured = false,
   blizzardConnected = false,
   blizzardBattleTag = null,
   connectingBlizzard = false,
   syncingBlizzard = false,
+  syncError = null,
+  syncMessage = null,
   onConnectBlizzard,
   onSyncBlizzard,
   onClose,
   onSave,
   onDelete,
 }) => {
-  const [name, setName] = useState(existing?.name || '');
+  const initialParts = useMemo(() => {
+    const trimmed = (existing?.name || '').trim().replace(/\s+/g, ' ');
+    if (!trimmed) return { first: '', last: '' };
+    const spaceIdx = trimmed.indexOf(' ');
+    if (spaceIdx === -1) return { first: trimmed, last: '' };
+    return {
+      first: trimmed.slice(0, spaceIdx),
+      last: trimmed.slice(spaceIdx + 1),
+    };
+  }, [existing?.name]);
+
+  const [firstName, setFirstName] = useState(initialParts.first);
+  const [lastName, setLastName] = useState(initialParts.last);
   const [faction, setFaction] = useState<Faction>(existing?.faction || 'Alliance');
   const [wowClass, setWowClass] = useState<WowClass>(existing?.wowClass || 'Warrior');
   const [race, setRace] = useState(existing?.race || 'Human');
@@ -93,8 +114,15 @@ export const CharacterModal: React.FC<CharacterModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim().length < FIELD_LIMITS.characterNameMin) {
-      setError('Character name must be at least 2 characters.');
+    const cleanFirst = firstName.trim();
+    const cleanLast = lastName.trim();
+    const combinedName = [cleanFirst, cleanLast].filter(Boolean).join(' ');
+    if (cleanFirst.length < FIELD_LIMITS.characterNameMin) {
+      setError('First name must be at least 2 characters.');
+      return;
+    }
+    if (combinedName.length > FIELD_LIMITS.characterNameMax) {
+      setError(`Combined name cannot exceed ${FIELD_LIMITS.characterNameMax} characters.`);
       return;
     }
     setSaving(true);
@@ -102,7 +130,7 @@ export const CharacterModal: React.FC<CharacterModalProps> = ({
     try {
       await onSave(
         {
-          name,
+          name: combinedName,
           realm: existing?.realm || 'Forever',
           faction,
           race: race || availableRaces[0] || 'Human',
@@ -168,60 +196,102 @@ export const CharacterModal: React.FC<CharacterModalProps> = ({
         <form onSubmit={(e) => void handleSubmit(e)} className="mt-5 space-y-5">
           {/* Battle.net Connection Bar */}
           {(onConnectBlizzard || onSyncBlizzard) && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl border border-slate-800 bg-[#0b0e14]/70 px-3.5 py-2.5">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-200">
-                  {blizzardConnected
-                    ? `Battle.net Connected${blizzardBattleTag ? ` (${blizzardBattleTag})` : ''}`
-                    : 'Battle.net Auto-Sync'}
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  {blizzardConnected
-                    ? 'Sync your characters automatically or update fields manually below.'
-                    : blizzardConfigured
-                      ? 'Connect Battle.net to import characters automatically.'
-                      : 'Add Battle.net secrets on the Roster page to enable auto-sync.'}
-                </p>
+            <div className="space-y-2 rounded-xl border border-slate-800 bg-[#0b0e14]/70 px-3.5 py-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-200">
+                    {blizzardConnected
+                      ? `Battle.net Connected${blizzardBattleTag ? ` (${blizzardBattleTag})` : ''}`
+                      : 'Battle.net Auto-Sync'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {blizzardConnected
+                      ? 'Sync your WoW: Forever characters automatically or edit fields below.'
+                      : blizzardConfigured
+                        ? 'Connect Battle.net to import WoW: Forever characters automatically.'
+                        : 'Add Battle.net secrets on the Roster page to enable auto-sync.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {onChangeRegion && (
+                    <select
+                      aria-label="Battle.net Region"
+                      value={blizzardRegion}
+                      onChange={(e) => onChangeRegion(e.target.value as BlizzardRegion)}
+                      className="min-h-[38px] rounded-lg border border-slate-700 bg-[#121722] px-2.5 text-xs font-semibold text-slate-200 focus:border-[#d4a843] focus:outline-none"
+                    >
+                      <option value="eu">EU</option>
+                      <option value="us">US</option>
+                      <option value="kr">KR</option>
+                      <option value="tw">TW</option>
+                    </select>
+                  )}
+                  {blizzardConnected && onSyncBlizzard ? (
+                    <button
+                      type="button"
+                      disabled={syncingBlizzard}
+                      onClick={() => void onSyncBlizzard()}
+                      className="min-h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d4a843]/40 bg-[#d4a843]/15 px-3 py-1.5 text-xs font-semibold text-[#f3d999] hover:bg-[#d4a843]/25 whitespace-nowrap shrink-0 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${syncingBlizzard ? 'animate-spin' : ''}`} />
+                      <span>{syncingBlizzard ? 'Syncing...' : 'Sync Characters'}</span>
+                    </button>
+                  ) : onConnectBlizzard ? (
+                    <button
+                      type="button"
+                      disabled={connectingBlizzard || !blizzardConfigured}
+                      onClick={() => void onConnectBlizzard()}
+                      className="min-h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d4a843]/40 bg-[#d4a843]/15 px-3 py-1.5 text-xs font-semibold text-[#f3d999] hover:bg-[#d4a843]/25 whitespace-nowrap shrink-0 disabled:opacity-50"
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                      <span>{connectingBlizzard ? 'Connecting...' : 'Connect Battle.net'}</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              {blizzardConnected && onSyncBlizzard ? (
-                <button
-                  type="button"
-                  disabled={syncingBlizzard}
-                  onClick={() => void onSyncBlizzard()}
-                  className="min-h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d4a843]/40 bg-[#d4a843]/15 px-3 py-1.5 text-xs font-semibold text-[#f3d999] hover:bg-[#d4a843]/25 whitespace-nowrap shrink-0 disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${syncingBlizzard ? 'animate-spin' : ''}`} />
-                  <span>{syncingBlizzard ? 'Syncing...' : 'Sync Characters'}</span>
-                </button>
-              ) : onConnectBlizzard ? (
-                <button
-                  type="button"
-                  disabled={connectingBlizzard || !blizzardConfigured}
-                  onClick={() => void onConnectBlizzard()}
-                  className="min-h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d4a843]/40 bg-[#d4a843]/15 px-3 py-1.5 text-xs font-semibold text-[#f3d999] hover:bg-[#d4a843]/25 whitespace-nowrap shrink-0 disabled:opacity-50"
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                  <span>{connectingBlizzard ? 'Connecting...' : 'Connect Battle.net'}</span>
-                </button>
-              ) : null}
+              {syncError && (
+                <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300 break-words">
+                  {syncError}
+                </p>
+              )}
+              {syncMessage && (
+                <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-200 break-words">
+                  {syncMessage}
+                </p>
+              )}
             </div>
           )}
 
-          {/* Character Name */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Character Name
-            </label>
-            <input
-              type="text"
-              required
-              minLength={2}
-              maxLength={FIELD_LIMITS.characterNameMax}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Grommash"
-              className="w-full min-h-[44px] rounded-xl border border-slate-700/80 bg-[#0b0e14] px-3.5 text-sm text-white placeholder:text-slate-500 focus:border-[#d4a843] focus:outline-none"
-            />
+          {/* Character First & Last Name */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                First Name
+              </label>
+              <input
+                type="text"
+                required
+                minLength={2}
+                maxLength={20}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="e.g. Ada"
+                className="w-full min-h-[44px] rounded-xl border border-slate-700/80 bg-[#0b0e14] px-3.5 text-sm text-white placeholder:text-slate-500 focus:border-[#d4a843] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Last Name (Surname)
+              </label>
+              <input
+                type="text"
+                maxLength={20}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="e.g. Brightwood"
+                className="w-full min-h-[44px] rounded-xl border border-slate-700/80 bg-[#0b0e14] px-3.5 text-sm text-white placeholder:text-slate-500 focus:border-[#d4a843] focus:outline-none"
+              />
+            </div>
           </div>
 
           {/* Faction, Class, Race */}

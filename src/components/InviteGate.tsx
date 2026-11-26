@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { KeyRound, LogOut, MailCheck, Shield } from 'lucide-react';
+import { KeyRound, LogOut, MailCheck } from 'lucide-react';
 import { EmailInvite, FIELD_LIMITS } from '../types/wow';
+import { NumLockLogo } from './NumLockLogo';
 
 interface InviteGateProps {
   userEmail: string;
@@ -23,7 +24,6 @@ export const InviteGate: React.FC<InviteGateProps> = ({
   const [inviteCode, setInviteCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [crestError, setCrestError] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -76,19 +76,7 @@ export const InviteGate: React.FC<InviteGateProps> = ({
       <div className="w-full max-w-lg space-y-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
-            <div className="h-12 w-12 overflow-hidden rounded-xl border border-[#d4a843]/40 bg-[#121722] shrink-0 flex items-center justify-center">
-              {!crestError ? (
-                <img
-                  src="/src/assets/images/guild_crest_1795682995375.jpg"
-                  alt="Numlock Nerds crest"
-                  referrerPolicy="no-referrer"
-                  onError={() => setCrestError(true)}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <Shield className="h-6 w-6 text-[#d4a843]" />
-              )}
-            </div>
+            <NumLockLogo className="h-12 w-12 shrink-0" />
             <div className="min-w-0">
               <h1 className="font-display text-xl font-bold text-white truncate">Numlock Nerds</h1>
               <p className="text-xs text-slate-400 truncate">

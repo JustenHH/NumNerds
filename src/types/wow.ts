@@ -9,7 +9,7 @@ export const FIELD_LIMITS = {
   inviteNoteMax: 60,
   emailMax: 160,
   characterNameMin: 2,
-  characterNameMax: 24,
+  characterNameMax: 40,
   realmMax: 40,
   raceMax: 24,
   profNameMax: 32,

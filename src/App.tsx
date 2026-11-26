@@ -5,7 +5,6 @@ import {
   KeyRound,
   LogOut,
   Package,
-  Shield,
   Trophy,
   UserCog,
   Users,
@@ -20,6 +19,7 @@ import { GuildAccessModal } from './components/GuildAccessModal';
 import { InviteGate } from './components/InviteGate';
 import { LeaderboardView } from './components/LeaderboardView';
 import { LedgerView } from './components/LedgerView';
+import { NumLockLogo } from './components/NumLockLogo';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { OverviewView } from './components/OverviewView';
 import { ProfileModal } from './components/ProfileModal';
@@ -87,11 +87,11 @@ function GuildApp() {
 
   const blizzardSync = useBlizzardSync({
     user: membershipStatus === 'admitted' ? user : null,
+    autoSyncReady: membershipStatus === 'admitted' && !dataLoading,
     onApplySyncedCharacters: syncBlizzardCharacters,
   });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
-  const [crestError, setCrestError] = useState(false);
 
   // Modal States
   const [charModalOpen, setCharModalOpen] = useState(false);
@@ -177,19 +177,7 @@ function GuildApp() {
       {/* Desktop Sidebar (240px) */}
       <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 border-r border-slate-800/90 bg-[#0d1118]">
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800/80">
-          <div className="h-9 w-9 overflow-hidden rounded-lg border border-[#d4a843]/40 bg-[#121722] shrink-0 flex items-center justify-center">
-            {!crestError ? (
-              <img
-                src="/src/assets/images/guild_crest_1795682995375.jpg"
-                alt="Numlock Nerds crest"
-                referrerPolicy="no-referrer"
-                onError={() => setCrestError(true)}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <Shield className="h-4 w-4 text-[#d4a843]" />
-            )}
-          </div>
+          <NumLockLogo className="h-9 w-9 shrink-0" />
           <span className="font-display text-base font-bold tracking-tight text-white whitespace-nowrap truncate">
             Numlock Nerds
           </span>
@@ -265,19 +253,7 @@ function GuildApp() {
         {/* Compact Sticky Header (Mobile 52px / Desktop 64px) */}
         <header className="sticky top-0 z-30 h-14 lg:h-16 border-b border-slate-800/90 bg-[#0b0e14]/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="h-8 w-8 overflow-hidden rounded-lg border border-[#d4a843]/40 bg-[#121722] shrink-0 lg:hidden flex items-center justify-center">
-              {!crestError ? (
-                <img
-                  src="/src/assets/images/guild_crest_1795682995375.jpg"
-                  alt="Numlock Nerds crest"
-                  referrerPolicy="no-referrer"
-                  onError={() => setCrestError(true)}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <Shield className="h-4 w-4 text-[#d4a843]" />
-              )}
-            </div>
+            <NumLockLogo className="h-8 w-8 shrink-0 lg:hidden" />
             <h1 className="font-display text-base lg:text-lg font-bold text-white truncate lg:hidden">
               Numlock Nerds
             </h1>
@@ -344,6 +320,8 @@ function GuildApp() {
                   blizzardConnected={blizzardSync.status.connected}
                   connectingBlizzard={blizzardSync.connecting}
                   syncingBlizzard={blizzardSync.syncing}
+                  syncError={blizzardSync.syncError}
+                  syncMessage={blizzardSync.syncMessage}
                   onConnectBlizzard={blizzardSync.connectBattleNet}
                   onSyncBlizzard={() => blizzardSync.syncNow()}
                   onNavigate={setActiveTab}
@@ -388,6 +366,7 @@ function GuildApp() {
               {activeTab === 'dungeons' && (
                 <DungeonsView
                   currentUserId={user.uid}
+                  characters={characters}
                   events={events}
                   signupsByEvent={signupsByEvent}
                   onCreateEvent={openNewEvent}
@@ -447,11 +426,15 @@ function GuildApp() {
       {charModalOpen && (
         <CharacterModal
           existing={editingChar}
+          blizzardRegion={blizzardSync.region}
+          onChangeRegion={blizzardSync.setRegion}
           blizzardConfigured={blizzardSync.status.configured}
           blizzardConnected={blizzardSync.status.connected}
           blizzardBattleTag={blizzardSync.status.battleTag}
           connectingBlizzard={blizzardSync.connecting}
           syncingBlizzard={blizzardSync.syncing}
+          syncError={blizzardSync.syncError}
+          syncMessage={blizzardSync.syncMessage}
           onConnectBlizzard={blizzardSync.connectBattleNet}
           onSyncBlizzard={() => blizzardSync.syncNow()}
           onClose={() => setCharModalOpen(false)}

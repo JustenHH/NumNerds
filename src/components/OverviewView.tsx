@@ -33,6 +33,8 @@ interface OverviewViewProps {
   blizzardConnected: boolean;
   connectingBlizzard: boolean;
   syncingBlizzard: boolean;
+  syncError: string | null;
+  syncMessage: string | null;
   onConnectBlizzard: () => Promise<void>;
   onSyncBlizzard: () => Promise<void>;
   onNavigate: (tab: 'overview' | 'characters' | 'leaderboard' | 'dungeons' | 'ledger') => void;
@@ -68,6 +70,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   blizzardConnected,
   connectingBlizzard,
   syncingBlizzard,
+  syncError,
+  syncMessage,
   onConnectBlizzard,
   onSyncBlizzard,
   onNavigate,
@@ -238,6 +242,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 const healers = signups.filter((s) => s.preferredRole === 'Healer').length;
                 const dps = signups.filter((s) => s.preferredRole === 'DPS').length;
 
+                const mySignupChar = mySignup
+                  ? characters.find((c) => c.id === mySignup.characterId)
+                  : undefined;
+
                 // Best matching alt preview if user has not signed up yet
                 const bestChar = myCharacters[0];
                 const bestElig = bestChar
@@ -276,7 +284,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       </p>
                       {mySignup ? (
                         <p className="mt-1 text-xs text-emerald-400">
-                          Signed as {mySignup.characterName} ({mySignup.preferredRole})
+                          Signed as {mySignupChar?.name || mySignup.characterName} ({mySignup.preferredRole})
                         </p>
                       ) : bestElig ? (
                         <p className={`mt-1 text-xs ${bestElig.textClass}`}>
@@ -343,6 +351,18 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 </button>
               </div>
             </div>
+
+            {syncError && (
+              <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300 break-words">
+                {syncError}
+              </p>
+            )}
+
+            {syncMessage && (
+              <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 break-words">
+                {syncMessage}
+              </p>
+            )}
 
             {charActionError && (
               <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300 break-words">
@@ -486,12 +506,21 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                         #{idx + 1}
                       </span>
                       <div className="min-w-0">
-                        <p
-                          className="text-sm font-semibold truncate"
-                          style={{ color: CLASS_META[char.wowClass].color }}
-                        >
-                          {char.name}
-                        </p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="text-sm font-semibold truncate"
+                            style={{ color: CLASS_META[char.wowClass].color }}
+                          >
+                            {char.name}
+                          </span>
+                          <span className="text-xs text-slate-500 shrink-0">·</span>
+                          <span
+                            className="text-xs font-medium shrink-0"
+                            style={{ color: CLASS_META[char.wowClass].color }}
+                          >
+                            {char.wowClass}
+                          </span>
+                        </div>
                         <p className="text-xs text-slate-400 truncate">
                           {char.ownerName} · {getLevelBracketName(char.level)}
                         </p>

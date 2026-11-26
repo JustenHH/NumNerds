@@ -669,6 +669,50 @@ export function useGuildData() {
     }
   };
 
+  const syncCharacterToOpenSignups = useCallback(
+    async (
+      characterId: string,
+      nextName: string,
+      nextClass: WowCharacter['wowClass'],
+      nextLevel: number,
+      nextItemLevel: number
+    ) => {
+      if (!user) return;
+      const openOrLockedIds = new Set(
+        events
+          .filter((ev) => ev.status === 'open' || ev.status === 'locked')
+          .map((ev) => ev.id)
+      );
+      for (const [eventId, list] of Object.entries(signupsByEvent)) {
+        if (!openOrLockedIds.has(eventId)) continue;
+        const match = list.find(
+          (s) => s.userId === user.uid && s.characterId === characterId
+        );
+        if (!match) continue;
+        if (
+          match.characterName === nextName &&
+          match.wowClass === nextClass &&
+          match.characterLevel === nextLevel &&
+          match.characterItemLevel === nextItemLevel
+        ) {
+          continue;
+        }
+        try {
+          await updateDoc(doc(db, 'events', eventId, 'signups', match.id), {
+            characterName: nextName,
+            wowClass: nextClass,
+            characterLevel: nextLevel,
+            characterItemLevel: nextItemLevel,
+            updatedAt: serverTimestamp(),
+          });
+        } catch {
+          // Non-blocking: live view still resolves character name from characters[]
+        }
+      }
+    },
+    [user, events, signupsByEvent]
+  );
+
   // Character Mutations
   const saveCharacter = async (
     payload: Omit<WowCharacter, 'id' | 'guildId' | 'ownerId' | 'ownerName' | 'createdAt' | 'updatedAt'>,
@@ -706,6 +750,13 @@ export function useGuildData() {
           ...sanitized,
           updatedAt: serverTimestamp(),
         });
+        await syncCharacterToOpenSignups(
+          existingId,
+          sanitized.name,
+          sanitized.wowClass,
+          sanitized.level,
+          sanitized.itemLevel
+        );
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, path);
       }
@@ -734,15 +785,24 @@ export function useGuildData() {
   ) => {
     if (!user) return;
     const path = `characters/${char.id}`;
+    const nextLevel = clampInt(updates.level ?? char.level, 1, 60);
+    const nextItemLevel = clampInt(updates.itemLevel ?? char.itemLevel, 0, 100);
     try {
       await updateDoc(doc(db, 'characters', char.id), {
-        level: clampInt(updates.level ?? char.level, 1, 60),
+        level: nextLevel,
         xpPercent: clampInt(updates.xpPercent ?? char.xpPercent, 0, 99),
-        itemLevel: clampInt(updates.itemLevel ?? char.itemLevel, 0, 100),
+        itemLevel: nextItemLevel,
         prof1Skill: clampInt(updates.prof1Skill ?? char.prof1Skill, 0, 300),
         prof2Skill: clampInt(updates.prof2Skill ?? char.prof2Skill, 0, 300),
         updatedAt: serverTimestamp(),
       });
+      await syncCharacterToOpenSignups(
+        char.id,
+        char.name,
+        char.wowClass,
+        nextLevel,
+        nextItemLevel
+      );
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -1013,8 +1073,17 @@ export function useGuildData() {
       let created = 0;
 
       for (const item of syncedList) {
-        const nameLower = item.name.trim().toLowerCase();
-        const existing = mine.find((c) => c.name.toLowerCase() === nameLower);
+        const cleanFullName = item.name.trim().replace(/\s+/g, ' ');
+        const nameLower = cleanFullName.toLowerCase();
+        const firstWord = nameLower.split(' ')[0];
+        const existing =
+          mine.find((c) => c.name.trim().toLowerCase() === nameLower) ||
+          mine.find(
+            (c) =>
+              !c.name.trim().includes(' ') &&
+              c.name.trim().toLowerCase() === firstWord &&
+              c.wowClass === item.wowClass
+          );
 
         const hasApiProfs = item.professions.length > 0;
         const p1 = item.professions[0];
@@ -1022,16 +1091,20 @@ export function useGuildData() {
 
         if (existing) {
           const path = `characters/${existing.id}`;
+          const nextName = clampString(item.name, FIELD_LIMITS.characterNameMax);
+          const nextLevel = clampInt(item.level, 1, 60);
+          const nextItemLevel =
+            item.itemLevel > 0 ? clampInt(item.itemLevel, 0, 100) : existing.itemLevel;
           try {
             await updateDoc(doc(db, 'characters', existing.id), {
               ownerName: currentUserName,
-              name: clampString(item.name, FIELD_LIMITS.characterNameMax),
+              name: nextName,
               realm: clampString(item.realm || 'Forever', FIELD_LIMITS.realmMax) || 'Forever',
               faction: item.faction,
               race: clampString(item.race, FIELD_LIMITS.raceMax),
               wowClass: item.wowClass,
-              level: clampInt(item.level, 1, 60),
-              itemLevel: item.itemLevel > 0 ? clampInt(item.itemLevel, 0, 100) : existing.itemLevel,
+              level: nextLevel,
+              itemLevel: nextItemLevel,
               prof1Name: hasApiProfs
                 ? clampString(p1?.name || '', FIELD_LIMITS.profNameMax)
                 : existing.prof1Name,
@@ -1046,6 +1119,13 @@ export function useGuildData() {
                 : existing.prof2Skill,
               updatedAt: serverTimestamp(),
             });
+            await syncCharacterToOpenSignups(
+              existing.id,
+              nextName,
+              item.wowClass,
+              nextLevel,
+              nextItemLevel
+            );
             updated += 1;
           } catch (error) {
             handleFirestoreError(error, OperationType.UPDATE, path);
@@ -1086,7 +1166,7 @@ export function useGuildData() {
 
       return { updated, created };
     },
-    [user, characters, currentMember, currentUserName]
+    [user, characters, currentMember, currentUserName, syncCharacterToOpenSignups]
   );
 
   return {

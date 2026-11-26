@@ -144,19 +144,26 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     #{idx + 1}
                   </span>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <span
                         className="text-sm font-semibold truncate"
                         style={{ color: CLASS_META[char.wowClass].color }}
                       >
                         {char.name}
                       </span>
+                      <span className="text-xs text-slate-500">·</span>
+                      <span
+                        className="text-xs font-medium"
+                        style={{ color: CLASS_META[char.wowClass].color }}
+                      >
+                        {char.wowClass}
+                      </span>
                       {isMine && (
                         <span className="text-[11px] font-medium text-[#d4a843]">· You</span>
                       )}
                     </div>
                     <p className="text-xs text-slate-400 truncate">
-                      {char.ownerName} · {char.race} {char.wowClass} · {getLevelBracketName(char.level)}
+                      {char.ownerName} · {char.race} · {getLevelBracketName(char.level)}
                     </p>
                   </div>
                 </div>
@@ -198,14 +205,23 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                   #{idx + 1}
                 </span>
                 <div className="min-w-0">
-                  <p
-                    className="text-sm font-semibold truncate"
-                    style={{ color: CLASS_META[char.wowClass].color }}
-                  >
-                    {char.name}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p
+                      className="text-sm font-semibold truncate"
+                      style={{ color: CLASS_META[char.wowClass].color }}
+                    >
+                      {char.name}
+                    </p>
+                    <span className="text-xs text-slate-500">·</span>
+                    <span
+                      className="text-xs font-medium"
+                      style={{ color: CLASS_META[char.wowClass].color }}
+                    >
+                      {char.wowClass}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400 truncate">
-                    {char.ownerName} · Lvl {char.level} {char.wowClass}
+                    {char.ownerName} · Lvl {char.level}
                   </p>
                 </div>
               </div>

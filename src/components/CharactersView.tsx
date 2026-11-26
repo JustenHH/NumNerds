@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Check,
   CheckCircle2,
+  Copy,
   Edit3,
   Link2,
   Plus,
@@ -67,6 +69,17 @@ export const CharactersView: React.FC<CharactersViewProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [copiedCallback, setCopiedCallback] = useState(false);
+
+  const handleCopyCallback = async () => {
+    try {
+      await navigator.clipboard.writeText(blizzardCallbackUrl);
+      setCopiedCallback(true);
+      setTimeout(() => setCopiedCallback(false), 2000);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
 
   const memberByUid = useMemo(() => {
     const map = new Map<string, GuildMember>();
@@ -147,7 +160,7 @@ export const CharactersView: React.FC<CharactersViewProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-400">
-              Automatically imports Classic Era characters, levels, classes, and item levels while keeping your manual professions intact.
+              Automatically imports WoW: Forever characters, levels, classes, and item levels while keeping your manual professions intact.
             </p>
           </div>
 
@@ -204,6 +217,32 @@ export const CharactersView: React.FC<CharactersViewProps> = ({
             <p className="text-amber-200/80">
               Add <code className="font-mono-num">BLIZZARD_CLIENT_ID</code> and <code className="font-mono-num">BLIZZARD_CLIENT_SECRET</code> in Secrets, and register <code className="font-mono-num break-all">{blizzardCallbackUrl}</code> as a Redirect URI on develop.battle.net.
             </p>
+          </div>
+        )}
+
+        {blizzardConfigured && (!blizzardConnected || syncError) && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-slate-800 bg-[#0b0e14]/70 px-3.5 py-2 text-[11px] text-slate-400">
+            <span className="break-all">
+              Redirect URI for this URL:{' '}
+              <code className="font-mono-num text-slate-200">{blizzardCallbackUrl}</code>
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleCopyCallback()}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-[#121722] px-2.5 py-1 text-[11px] font-medium text-slate-200 hover:border-slate-500 whitespace-nowrap shrink-0 self-start sm:self-auto"
+            >
+              {copiedCallback ? (
+                <>
+                  <Check className="h-3 w-3 text-emerald-400" />
+                  <span>Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" />
+                  <span>Copy URI</span>
+                </>
+              )}
+            </button>
           </div>
         )}
 

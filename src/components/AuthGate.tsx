@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Calendar, Shield, Trophy, Users } from 'lucide-react';
+import { Calendar, Trophy, Users } from 'lucide-react';
+import { NumLockLogo } from './NumLockLogo';
 import { PWAInstallButton } from './PWAInstallButton';
 
 interface AuthGateProps {
@@ -9,7 +10,6 @@ interface AuthGateProps {
 
 export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, authError }) => {
   const [signingIn, setSigningIn] = useState(false);
-  const [crestError, setCrestError] = useState(false);
   const [bannerError, setBannerError] = useState(false);
 
   const handleLogin = async () => {
@@ -81,19 +81,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSignIn, authError }) => {
       <div className="flex flex-1 lg:col-span-5 items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-md space-y-6">
           <div className="flex items-center gap-4">
-            <div className="h-14 w-14 overflow-hidden rounded-xl border border-[#d4a843]/40 bg-[#121722] shrink-0 flex items-center justify-center">
-              {!crestError ? (
-                <img
-                  src="/src/assets/images/guild_crest_1795682995375.jpg"
-                  alt="Numlock Nerds crest"
-                  referrerPolicy="no-referrer"
-                  onError={() => setCrestError(true)}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <Shield className="h-7 w-7 text-[#d4a843]" />
-              )}
-            </div>
+            <NumLockLogo className="h-14 w-14 shrink-0" />
             <div>
               <h2 className="font-display text-xl font-bold text-white">Enter the Guild Hall</h2>
               <p className="mt-0.5 text-sm text-slate-400">

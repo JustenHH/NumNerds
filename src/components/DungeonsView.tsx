@@ -15,10 +15,11 @@ import {
   evaluateEligibility,
   FOREVER_INSTANCES,
 } from '../data/foreverData';
-import { DungeonEvent, EventCategory, EventSignup } from '../types/wow';
+import { DungeonEvent, EventCategory, EventSignup, WowCharacter } from '../types/wow';
 
 interface DungeonsViewProps {
   currentUserId: string;
+  characters: WowCharacter[];
   events: DungeonEvent[];
   signupsByEvent: Record<string, EventSignup[]>;
   onCreateEvent: () => void;
@@ -43,6 +44,7 @@ function formatDateTime(iso: string): string {
 
 export const DungeonsView: React.FC<DungeonsViewProps> = ({
   currentUserId,
+  characters,
   events,
   signupsByEvent,
   onCreateEvent,
@@ -55,6 +57,12 @@ export const DungeonsView: React.FC<DungeonsViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [categoryFilter, setCategoryFilter] = useState<EventCategory | 'All'>('All');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const charactersById = useMemo(() => {
+    const map = new Map<string, WowCharacter>();
+    characters.forEach((c) => map.set(c.id, c));
+    return map;
+  }, [characters]);
 
   const filtered = useMemo(() => {
     return events.filter((ev) => {
@@ -310,9 +318,14 @@ export const DungeonsView: React.FC<DungeonsViewProps> = ({
                   ) : (
                     <div className="divide-y divide-slate-800/70 rounded-xl border border-slate-800/80 bg-[#121722]">
                       {signups.map((s) => {
+                        const liveChar = charactersById.get(s.characterId);
+                        const charName = liveChar?.name || s.characterName;
+                        const charLevel = liveChar?.level ?? s.characterLevel;
+                        const charItemLevel = liveChar?.itemLevel ?? s.characterItemLevel;
+                        const charClass = liveChar?.wowClass || s.wowClass;
                         const elig = evaluateEligibility(
-                          s.characterLevel,
-                          s.characterItemLevel,
+                          charLevel,
+                          charItemLevel,
                           ev.requirementType,
                           ev.requiredLevel
                         );
@@ -327,12 +340,12 @@ export const DungeonsView: React.FC<DungeonsViewProps> = ({
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                               <span
                                 className="text-sm font-semibold"
-                                style={{ color: CLASS_META[s.wowClass].color }}
+                                style={{ color: CLASS_META[charClass].color }}
                               >
-                                {s.characterName}
+                                {charName}
                               </span>
                               <span className="font-mono-num text-slate-300">
-                                Lvl {s.characterLevel}
+                                Lvl {charLevel}
                               </span>
                               <span className="text-slate-500">·</span>
                               <span className="text-slate-300">{s.userName}</span>

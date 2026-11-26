@@ -1,7 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <rect width="512" height="512" rx="96" fill="#0B0E14"/>
-  <path d="M256 76L408 134V256C408 352 341 422 256 446C171 422 104 352 104 256V134L256 76Z" stroke="#D4A843" stroke-width="22" fill="#121722"/>
-  <path d="M188 184C188 175.163 195.163 168 204 168H308C316.837 168 324 175.163 324 184V268C324 276.837 316.837 284 308 284H204C195.163 284 188 276.837 188 268V184Z" fill="#D4A843"/>
-  <rect x="210" y="186" width="92" height="62" rx="8" fill="#121722"/>
-  <path d="M174 340L338 220M338 340L174 220" stroke="#E5B95C" stroke-width="18" stroke-linecap="round"/>
+  <!-- Outer keycap frame -->
+  <rect x="44" y="44" width="424" height="424" rx="76" fill="#0D111A" stroke="#D4A843" stroke-width="14"/>
+  <!-- Keycap bottom skirt / bevel shadow -->
+  <rect x="64" y="92" width="384" height="352" rx="58" fill="#070A0F"/>
+  <!-- Top keycap surface -->
+  <rect x="72" y="68" width="368" height="336" rx="54" fill="#161D2B" stroke="#334155" stroke-width="10"/>
+  <!-- Top rim highlight -->
+  <path d="M128 80H384" stroke="#F3D999" stroke-opacity="0.45" stroke-width="8" stroke-linecap="round"/>
+  <!-- Active NumLock LED -->
+  <circle cx="378" cy="126" r="30" fill="#34D399" fill-opacity="0.22"/>
+  <circle cx="378" cy="126" r="17" fill="#34D399"/>
+
+  <!-- NUM -->
+  <path d="M126 226V154L174 226V154" stroke="#F3D999" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M206 154V202C206 216 216 226 230 226C244 226 254 216 254 202V154" stroke="#F3D999" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M286 226V154L317 200L348 154V226" stroke="#F3D999" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- LOCK -->
+  <path d="M126 274V336H160" stroke="#CBD5E1" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="184" y="274" width="42" height="62" rx="20" stroke="#CBD5E1" stroke-width="16"/>
+  <path d="M288 284C283 278 276 274 268 274C254 274 247 285 247 305C247 325 254 336 268 336C276 336 283 332 288 326" stroke="#CBD5E1" stroke-width="16" stroke-linecap="round"/>
+  <path d="M316 274V336M354 274L319 305L356 336" stroke="#CBD5E1" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

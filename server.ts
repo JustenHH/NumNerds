@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
-import { createServer as createViteServer } from 'vite';
 
 type BlizzardRegion = 'eu' | 'us' | 'kr' | 'tw';
 
@@ -172,14 +171,35 @@ function isBlizzardConfigured(): boolean {
   );
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string {
+  if (!value) return '';
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw.split(',')[0].trim();
+}
+
 function getAppBaseUrl(req: Request): string {
+  const protoRaw = firstHeaderValue(req.headers['x-forwarded-proto']) || req.protocol || 'https';
+  const proto = protoRaw === 'http' || protoRaw === 'https' ? protoRaw : 'https';
+  const host = firstHeaderValue(req.headers['x-forwarded-host']) || firstHeaderValue(req.get('host'));
+
+  // Prefer the actual public request host (e.g., ais-dev vs ais-pre) when present so OAuth
+  // cookies and callback origin always match the container the user is visiting.
+  if (
+    host &&
+    !host.startsWith('localhost') &&
+    !host.startsWith('127.0.0.1') &&
+    !host.startsWith('0.0.0.0') &&
+    host.includes('.')
+  ) {
+    return `${proto}://${host}`.replace(/\/+$/, '');
+  }
+
   const configured = process.env.APP_URL?.trim();
   if (configured && configured !== 'MY_APP_URL') {
     return configured.replace(/\/+$/, '');
   }
-  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-  const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || `localhost:${PORT}`;
-  return `${proto}://${host}`.replace(/\/+$/, '');
+
+  return `${proto}://${host || `localhost:${PORT}`}`.replace(/\/+$/, '');
 }
 
 function getRedirectUri(req: Request): string {
@@ -362,37 +382,85 @@ async function getClientCredentialsToken(): Promise<string> {
   return json.access_token;
 }
 
-async function fetchClassicCharacterDetails(
+function formatForeverFullName(
+  firstName?: string,
+  surname?: string,
+  lastName?: string,
+  fullName?: string
+): string {
+  if (fullName && fullName.trim()) {
+    return fullName.trim().replace(/\s+/g, ' ');
+  }
+  const first = (firstName || '').trim();
+  const last = (surname || lastName || '').trim();
+  if (first && last && !first.toLowerCase().endsWith(` ${last.toLowerCase()}`)) {
+    return `${first} ${last}`;
+  }
+  return first || last;
+}
+
+function extractSlugFromHref(href?: string): string | undefined {
+  if (!href || typeof href !== 'string') return undefined;
+  try {
+    const url = new URL(href);
+    const match = url.pathname.match(/\/profile\/wow\/character\/([^/?#]+)$/i);
+    return match?.[1] ? decodeURIComponent(match[1]).toLowerCase() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function formatNameFromSlug(slug?: string): string {
+  if (!slug) return '';
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function slugifyForeverCharacter(name: string, providedSlug?: string): string {
+  if (providedSlug && typeof providedSlug === 'string') {
+    const clean = providedSlug.trim().toLowerCase();
+    if (clean && !/[/?#\\]/.test(clean)) return clean;
+  }
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+}
+
+async function fetchForeverCharacterDetails(
   region: BlizzardRegion,
-  realmSlug: string,
   characterName: string,
-  accessToken: string
+  accessToken: string,
+  options?: { characterSlug?: string; realmSlug?: string }
 ): Promise<SyncedCharacterPayload | null> {
-  const safeRealm = slugifyRealm(realmSlug);
-  const safeChar = characterName.trim().toLowerCase();
-  if (!safeRealm || !/^[a-z0-9-]+$/.test(safeRealm)) {
-    return null;
-  }
-  if (!safeChar || safeChar.length < 2 || safeChar.length > 24 || /[/?#\\]/.test(safeChar)) {
+  const safeCharSlug = slugifyForeverCharacter(characterName, options?.characterSlug);
+  if (!safeCharSlug || safeCharSlug.length < 2 || safeCharSlug.length > 64 || /[/?#\\]/.test(safeCharSlug)) {
     return null;
   }
 
-  const namespace = `profile-classic1x-${region}`;
-  const cleanRealm = encodeURIComponent(safeRealm);
-  const cleanChar = encodeURIComponent(safeChar);
-  const baseUrl = `https://${region}.api.blizzard.com/profile/wow/character/${cleanRealm}/${cleanChar}`;
+  const namespace = `profile-forever-${region}`;
+  const cleanChar = encodeURIComponent(safeCharSlug);
+  const safeRealm = options?.realmSlug ? slugifyRealm(options.realmSlug) : '';
 
-  const profileResp = await fetch(
-    `${baseUrl}?namespace=${encodeURIComponent(namespace)}&locale=en_US`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-
-  if (!profileResp.ok) {
-    return null;
+  // WoW: Forever uses realmless character endpoints (/profile/wow/character/{first-last});
+  // keep /{realm}/{char} as a secondary fallback if realmSlug is present and realmless returns 404.
+  const candidateBaseUrls = [
+    `https://${region}.api.blizzard.com/profile/wow/character/${cleanChar}`,
+  ];
+  if (safeRealm && /^[a-z0-9-]+$/.test(safeRealm)) {
+    candidateBaseUrls.push(
+      `https://${region}.api.blizzard.com/profile/wow/character/${encodeURIComponent(safeRealm)}/${cleanChar}`
+    );
   }
 
-  const profile = (await profileResp.json()) as {
+  interface BlizzardProfilePayload {
     name?: string;
+    surname?: string;
+    last_name?: string;
+    full_name?: string;
     level?: number;
     equipped_item_level?: number;
     average_item_level?: number;
@@ -401,17 +469,40 @@ async function fetchClassicCharacterDetails(
     character_class?: { name?: string };
     realm?: { name?: string; slug?: string };
     guild?: { name?: string };
-  };
+  }
+
+  let matchedBaseUrl: string | null = null;
+  let profile: BlizzardProfilePayload | null = null;
+
+  for (const baseUrl of candidateBaseUrls) {
+    try {
+      const profileResp = await fetch(
+        `${baseUrl}?namespace=${encodeURIComponent(namespace)}&locale=en_US`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (profileResp.ok) {
+        profile = (await profileResp.json()) as BlizzardProfilePayload;
+        matchedBaseUrl = baseUrl;
+        break;
+      }
+    } catch {
+      // try next candidate URL
+    }
+  }
+
+  if (!profile || !matchedBaseUrl) {
+    return null;
+  }
 
   const rawClass = profile.character_class?.name || 'Warrior';
   const wowClass = (VALID_CLASSES.has(rawClass) ? rawClass : 'Warrior') as SyncedCharacterPayload['wowClass'];
   const faction = profile.faction?.name === 'Horde' ? 'Horde' : 'Alliance';
 
-  // Attempt Classic Era professions sub-endpoint (gracefully skip if Blizzard returns 404)
+  // Attempt Forever professions sub-endpoint (gracefully skip if Blizzard returns 404)
   const professions: SyncedProfession[] = [];
   try {
     const profResp = await fetch(
-      `${baseUrl}/professions?namespace=${encodeURIComponent(namespace)}&locale=en_US`,
+      `${matchedBaseUrl}/professions?namespace=${encodeURIComponent(namespace)}&locale=en_US`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     if (profResp.ok) {
@@ -437,13 +528,21 @@ async function fetchClassicCharacterDetails(
       }
     }
   } catch {
-    // Classic Era often returns 404 on /professions; preserve manual professions client-side
+    // Sub-endpoint may return 404 on Forever; preserve manual professions client-side
   }
 
+  const resolvedName =
+    formatForeverFullName(
+      profile.name,
+      profile.surname,
+      profile.last_name,
+      profile.full_name
+    ) || characterName;
+
   return {
-    name: profile.name || characterName,
-    realm: profile.realm?.name || realmSlug,
-    realmSlug: profile.realm?.slug || realmSlug,
+    name: resolvedName,
+    realm: profile.realm?.name || 'Forever',
+    realmSlug: profile.realm?.slug || 'forever',
     faction,
     race: profile.race?.name || 'Human',
     wowClass,
@@ -492,16 +591,17 @@ async function startServer() {
       exp: Date.now() + 10 * 60 * 1000,
     });
 
+    const redirectUri = getRedirectUri(req);
     const params = new URLSearchParams({
       client_id: process.env.BLIZZARD_CLIENT_ID!.trim(),
-      redirect_uri: getRedirectUri(req),
+      redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'wow.profile',
       state,
     });
 
     const authUrl = `https://oauth.battle.net/authorize?${params.toString()}`;
-    res.json({ url: authUrl, region });
+    res.json({ url: authUrl, region, callbackUrl: redirectUri });
   });
 
   // 3. Battle.net OAuth Callback (handles trailing slash variations)
@@ -528,10 +628,19 @@ async function startServer() {
 
     const state = verifyStatePayload(stateRaw);
     if (!code || !state || !isBlizzardConfigured()) {
+      const reason = !isBlizzardConfigured()
+        ? 'Blizzard credentials are not configured on the server.'
+        : 'Invalid or expired OAuth state.';
       res.status(400).send(`
         <html><body style="background:#0b0e14;color:#f1f5f9;font-family:sans-serif;padding:24px;">
           <h3>Invalid or Expired OAuth State</h3>
           <p>Please close this window and try connecting again.</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'BLIZZARD_AUTH_ERROR', error: ${JSON.stringify(reason)} }, '*');
+              window.close();
+            }
+          </script>
         </body></html>
       `);
       return;
@@ -541,6 +650,7 @@ async function startServer() {
       const clientId = process.env.BLIZZARD_CLIENT_ID!.trim();
       const clientSecret = process.env.BLIZZARD_CLIENT_SECRET!.trim();
       const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+      const redirectUri = getRedirectUri(req);
 
       const tokenResp = await fetch('https://oauth.battle.net/token', {
         method: 'POST',
@@ -551,12 +661,21 @@ async function startServer() {
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           code,
-          redirect_uri: getRedirectUri(req),
+          redirect_uri: redirectUri,
         }),
       });
 
       if (!tokenResp.ok) {
-        throw new Error(`Token exchange failed (${tokenResp.status})`);
+        let detail = '';
+        try {
+          const errBody = (await tokenResp.json()) as { error_description?: string; error?: string };
+          detail = errBody.error_description || errBody.error || '';
+        } catch {
+          // ignore non-JSON body
+        }
+        throw new Error(
+          `Token exchange failed (${tokenResp.status})${detail ? `: ${detail}` : ''}`
+        );
       }
 
       const tokenJson = (await tokenResp.json()) as {
@@ -625,6 +744,11 @@ async function startServer() {
         <html><body style="background:#0b0e14;color:#f1f5f9;font-family:sans-serif;padding:24px;">
           <h3>Battle.net Connection Failed</h3>
           <p>${msg.replace(/</g, '&lt;')}</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'BLIZZARD_AUTH_ERROR', error: ${JSON.stringify(msg)} }, '*');
+            }
+          </script>
         </body></html>
       `);
     }
@@ -634,7 +758,7 @@ async function startServer() {
     void handleBlizzardCallback(req, res);
   });
 
-  // 4. Sync all Classic Era characters from user's connected Battle.net account
+  // 4. Sync all WoW: Forever characters from user's connected Battle.net account
   app.post('/api/blizzard/sync', requireFirebaseAuth, async (req: Request, res: Response) => {
     const { firebaseUser } = req as Request & { firebaseUser: VerifiedFirebaseUser };
     const session = getBnetSession(req, firebaseUser.uid);
@@ -648,7 +772,7 @@ async function startServer() {
     }
 
     const region = sanitizeRegion(req.body?.region || session.region);
-    const namespace = `profile-classic1x-${region}`;
+    const namespace = `profile-forever-${region}`;
 
     try {
       const summaryResp = await fetch(
@@ -656,9 +780,38 @@ async function startServer() {
         { headers: { Authorization: `Bearer ${session.accessToken}` } }
       );
 
+      if (summaryResp.status === 404) {
+        res.json({
+          region,
+          namespace,
+          battleTag: session.battleTag || null,
+          characters: [],
+          diagnostic: `Connected to Battle.net (${region.toUpperCase()}), but Blizzard returned 404 for namespace "${namespace}". Either you have no WoW: Forever characters indexed on ${region.toUpperCase()} yet (characters typically appear after reaching level 10 and logging out), or your Forever account is on another region (EU vs US).`,
+        });
+        return;
+      }
+
       if (!summaryResp.ok) {
+        let detail = '';
+        try {
+          const errText = await summaryResp.text();
+          if (errText) {
+            try {
+              const parsed = JSON.parse(errText) as {
+                detail?: string;
+                error_description?: string;
+                message?: string;
+              };
+              detail = parsed.detail || parsed.error_description || parsed.message || '';
+            } catch {
+              detail = errText.slice(0, 160);
+            }
+          }
+        } catch {
+          // ignore body read error
+        }
         res.status(summaryResp.status).json({
-          error: `Blizzard returned HTTP ${summaryResp.status} for Classic Era (${region.toUpperCase()}). Make sure you selected the right region and have logged out of your character recently.`,
+          error: `Blizzard returned HTTP ${summaryResp.status} for WoW: Forever (${region.toUpperCase()})${detail ? `: ${detail}` : '.'} Check your selected region or reconnect Battle.net.`,
         });
         return;
       }
@@ -667,7 +820,18 @@ async function startServer() {
         wow_accounts?: Array<{
           characters?: Array<{
             name?: string;
+            surname?: string;
+            last_name?: string;
+            full_name?: string;
+            slug?: string;
             level?: number;
+            character?: {
+              href?: string;
+              name?: string;
+              surname?: string;
+              last_name?: string;
+              slug?: string;
+            };
             realm?: { name?: string; slug?: string };
             playable_class?: { name?: string };
             playable_race?: { name?: string };
@@ -681,24 +845,42 @@ async function startServer() {
 
       const synced: SyncedCharacterPayload[] = [];
       for (const c of rawChars.slice(0, 25)) {
-        if (!c.name || !c.realm?.slug) continue;
-        const detailed = await fetchClassicCharacterDetails(
+        const hrefSlug = extractSlugFromHref(c.character?.href);
+        const charSlug = c.slug || c.character?.slug || hrefSlug;
+        const firstName = c.name || c.character?.name;
+        const lastName = c.surname || c.last_name || c.character?.surname || c.character?.last_name;
+        const combined = formatForeverFullName(firstName, lastName, undefined, c.full_name);
+        const fullName =
+          combined.includes(' ')
+            ? combined
+            : charSlug && charSlug.includes('-')
+              ? formatNameFromSlug(charSlug)
+              : combined;
+
+        if (!fullName) continue;
+        const detailed = await fetchForeverCharacterDetails(
           region,
-          c.realm.slug,
-          c.name,
-          session.accessToken
+          fullName,
+          session.accessToken,
+          {
+            characterSlug: charSlug,
+            realmSlug: c.realm?.slug,
+          }
         );
 
         if (detailed) {
-          synced.push(detailed);
+          synced.push({
+            ...detailed,
+            name: detailed.name.includes(' ') ? detailed.name : fullName,
+          });
         } else {
-          // Fallback to summary data if character is under level 10 or not yet indexed
+          // Fallback to summary data if character is under level 10 or detailed endpoint returns 404
           const rawClass = c.playable_class?.name || 'Warrior';
           const wowClass = (VALID_CLASSES.has(rawClass) ? rawClass : 'Warrior') as SyncedCharacterPayload['wowClass'];
           synced.push({
-            name: c.name,
-            realm: c.realm.name || c.realm.slug,
-            realmSlug: c.realm.slug,
+            name: fullName,
+            realm: c.realm?.name || 'Forever',
+            realmSlug: c.realm?.slug || 'forever',
             faction: c.faction?.name === 'Horde' ? 'Horde' : 'Alliance',
             race: c.playable_race?.name || 'Human',
             wowClass,
@@ -712,8 +894,13 @@ async function startServer() {
 
       res.json({
         region,
+        namespace,
         battleTag: session.battleTag || null,
         characters: synced,
+        diagnostic:
+          synced.length === 0
+            ? `Connected to Battle.net (${region.toUpperCase()}), and Blizzard returned 0 WoW: Forever characters. In WoW: Forever, characters usually do not populate in Blizzard's API until they reach level 10 and you log out of the game at least once (or switch between EU / US region).`
+            : undefined,
       });
     } catch (err) {
       res.status(502).json({
@@ -741,7 +928,7 @@ async function startServer() {
     res.json({ disconnected: true });
   });
 
-  // 6. Optional public character refresh via Client Credentials (for refreshing a single character by realm + name)
+  // 6. Optional public character refresh via Client Credentials (realmless Forever slug)
   app.post('/api/blizzard/lookup', requireFirebaseAuth, async (req: Request, res: Response) => {
     if (!isBlizzardConfigured()) {
       res.status(503).json({
@@ -754,18 +941,19 @@ async function startServer() {
     const realmInput = typeof req.body?.realm === 'string' ? req.body.realm : '';
     const nameInput = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
 
-    const realmSlug = slugifyRealm(realmInput);
-    if (!realmSlug || !nameInput || nameInput.length < 2 || nameInput.length > 24) {
-      res.status(400).json({ error: 'Valid realm and character name are required.' });
+    if (!nameInput || nameInput.length < 2 || nameInput.length > 48) {
+      res.status(400).json({ error: 'Valid character name is required.' });
       return;
     }
 
     try {
       const token = await getClientCredentialsToken();
-      const details = await fetchClassicCharacterDetails(region, realmSlug, nameInput, token);
+      const details = await fetchForeverCharacterDetails(region, nameInput, token, {
+        realmSlug: realmInput || undefined,
+      });
       if (!details) {
         res.status(404).json({
-          error: `Character "${nameInput}" on "${realmSlug}" (${region.toUpperCase()}) was not found in Classic Era.`,
+          error: `Character "${nameInput}" (${region.toUpperCase()}) was not found in WoW: Forever.`,
         });
         return;
       }
@@ -779,6 +967,7 @@ async function startServer() {
 
   // Mount Vite middleware in dev or static dist in production
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
