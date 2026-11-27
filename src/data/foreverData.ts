@@ -10,10 +10,11 @@ export interface ForeverInstance {
   recommendedLevel: number;
   partySize: number;
   notes: string;
+  isForeverNew?: boolean;
 }
 
 export const FOREVER_INSTANCES: ForeverInstance[] = [
-  // Classic Era Dungeons (Ordered by level progression)
+  // Dungeons (Ordered by level progression, including WoW: Forever Classic+ instances)
   {
     id: 'ragefire-chasm',
     name: 'Ragefire Chasm',
@@ -24,6 +25,30 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     recommendedLevel: 13,
     partySize: 5,
     notes: 'Entry-level Horde dungeon beneath Orgrimmar.',
+  },
+  {
+    id: 'hall-of-thanes',
+    name: 'Hall of Thanes',
+    zone: 'Dun Morogh (Ironforge)',
+    category: 'Dungeon',
+    minLevel: 13,
+    maxLevel: 18,
+    recommendedLevel: 14,
+    partySize: 5,
+    notes: 'New Forever dungeon beneath Ironforge; royal tombs of the Dwarven kings.',
+    isForeverNew: true,
+  },
+  {
+    id: 'ruins-of-lordaeron',
+    name: 'Ruins of Lordaeron',
+    zone: 'Tirisfal Glades (Undercity)',
+    category: 'Dungeon',
+    minLevel: 15,
+    maxLevel: 20,
+    recommendedLevel: 16,
+    partySize: 5,
+    notes: 'New Forever dungeon on the shattered surface above Undercity.',
+    isForeverNew: true,
   },
   {
     id: 'the-deadmines',
@@ -59,6 +84,18 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     notes: 'Archmage Arugal’s worgen-infested fortress.',
   },
   {
+    id: 'excavation-site-wetlands',
+    name: 'Excavation Site: Wetlands',
+    zone: 'Wetlands',
+    category: 'Dungeon',
+    minLevel: 24,
+    maxLevel: 29,
+    recommendedLevel: 25,
+    partySize: 5,
+    notes: 'New Forever dungeon near Whelgar’s Excavation and Thelgen Rock.',
+    isForeverNew: true,
+  },
+  {
     id: 'blackfathom-deeps',
     name: 'Blackfathom Deeps',
     zone: 'Ashenvale',
@@ -90,6 +127,18 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     recommendedLevel: 28,
     partySize: 5,
     notes: 'First wing of Scarlet Monastery.',
+  },
+  {
+    id: 'city-of-dalaran',
+    name: 'City of Dalaran',
+    zone: 'Alterac Mountains',
+    category: 'Dungeon',
+    minLevel: 28,
+    maxLevel: 33,
+    recommendedLevel: 29,
+    partySize: 5,
+    notes: 'New Forever dungeon entered via Dalaran’s sewers; requires faction attunement.',
+    isForeverNew: true,
   },
   {
     id: 'gnomeregan',
@@ -136,6 +185,18 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     notes: 'Requires Scarlet Key. Herod’s shoulder & Ravager.',
   },
   {
+    id: 'the-drowned-city',
+    name: 'The Drowned City',
+    zone: 'Stranglethorn Vale',
+    category: 'Dungeon',
+    minLevel: 35,
+    maxLevel: 40,
+    recommendedLevel: 36,
+    partySize: 5,
+    notes: 'New Forever underwater dungeon off the coast west of Grom’gol.',
+    isForeverNew: true,
+  },
+  {
     id: 'sm-cathedral',
     name: 'Scarlet Monastery: Cathedral',
     zone: 'Tirisfal Glades',
@@ -156,6 +217,18 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     recommendedLevel: 38,
     partySize: 5,
     notes: 'Scourge-held quilboar mounds.',
+  },
+  {
+    id: 'kroldok-stronghold',
+    name: "Krol'dok Stronghold",
+    zone: 'Riverglades',
+    category: 'Dungeon',
+    minLevel: 40,
+    maxLevel: 45,
+    recommendedLevel: 41,
+    partySize: 5,
+    notes: 'New Forever ogre stronghold in the Riverglades zone.',
+    isForeverNew: true,
   },
   {
     id: 'uldaman',
@@ -191,6 +264,18 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     notes: 'Orange, Purple, and Princess runs.',
   },
   {
+    id: 'alcaz-prison',
+    name: 'Alcaz Prison',
+    zone: 'Dustwallow Marsh (Alcaz Island)',
+    category: 'Dungeon',
+    minLevel: 48,
+    maxLevel: 53,
+    recommendedLevel: 49,
+    partySize: 5,
+    notes: 'New Forever dungeon on Alcaz Island across the waters of Dustwallow Marsh.',
+    isForeverNew: true,
+  },
+  {
     id: 'sunken-temple',
     name: "Temple of Atal'Hakkar (Sunken Temple)",
     zone: 'Swamp of Sorrows',
@@ -211,6 +296,18 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     recommendedLevel: 53,
     partySize: 5,
     notes: 'Arena, Vault, Grim Guzzler, Molten Core attunement.',
+  },
+  {
+    id: 'blackmaw-hold',
+    name: 'Blackmaw Hold',
+    zone: 'Azshara',
+    category: 'Dungeon',
+    minLevel: 55,
+    maxLevel: 60,
+    recommendedLevel: 57,
+    partySize: 5,
+    notes: 'New Forever endgame furbolg hold in Azshara.',
+    isForeverNew: true,
   },
   {
     id: 'lbrs',
@@ -268,6 +365,18 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     notes: 'King Gordok Tribute buff & pre-raid BiS.',
   },
   {
+    id: 'shapers-terrace',
+    name: "Shaper's Terrace",
+    zone: "Un'Goro Crater",
+    category: 'Dungeon',
+    minLevel: 58,
+    maxLevel: 60,
+    recommendedLevel: 59,
+    partySize: 5,
+    notes: 'New Forever Titan research dungeon in northern Un’Goro Crater; pre-raid BiS & raid attunement.',
+    isForeverNew: true,
+  },
+  {
     id: 'stratholme',
     name: 'Stratholme (Live / Undead)',
     zone: 'Eastern Plaguelands',
@@ -290,7 +399,31 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     notes: 'Darkmaster Gandling & Alchemy Lab.',
   },
 
-  // Classic Era Raids
+  // Forever & Classic Era Raids
+  {
+    id: 'the-barrow-deeps',
+    name: 'The Barrow Deeps',
+    zone: 'Mount Hyjal',
+    category: 'Raid',
+    minLevel: 60,
+    maxLevel: 60,
+    recommendedLevel: 60,
+    partySize: 10,
+    notes: 'New Forever 10-player Tier 1 raid beneath Mount Hyjal (8 bosses).',
+    isForeverNew: true,
+  },
+  {
+    id: 'hyjal-summit',
+    name: 'Hyjal Summit',
+    zone: 'Mount Hyjal',
+    category: 'Raid',
+    minLevel: 60,
+    maxLevel: 60,
+    recommendedLevel: 60,
+    partySize: 20,
+    notes: 'New Forever 20-player raid at the peak of Mount Hyjal near Nordrassil (13 bosses).',
+    isForeverNew: true,
+  },
   {
     id: 'zulgurub',
     name: "Zul'Gurub",
@@ -379,7 +512,7 @@ export const FOREVER_INSTANCES: ForeverInstance[] = [
     maxLevel: 60,
     recommendedLevel: 25,
     partySize: 5,
-    notes: 'Custom group questing (e.g., Jintha’alor, Whirlwind Axe, Darrowshire).',
+    notes: 'Custom group questing (e.g., Riverglades, Jintha’alor, Whirlwind Axe, Darrowshire).',
   },
   {
     id: 'world-boss-or-farm',

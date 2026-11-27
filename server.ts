@@ -65,8 +65,8 @@ const EPHEMERAL_FALLBACK_KEY = crypto.randomBytes(32).toString('hex');
 
 function getSessionSecretKey(): Buffer {
   const raw =
-    process.env.OAUTH_STATE_SECRET?.trim() ||
-    process.env.BLIZZARD_CLIENT_SECRET?.trim() ||
+    cleanEnv('OAUTH_STATE_SECRET') ||
+    cleanEnv('BLIZZARD_CLIENT_SECRET') ||
     EPHEMERAL_FALLBACK_KEY;
   return crypto.createHash('sha256').update(raw).digest();
 }
@@ -164,11 +164,12 @@ function getBnetSession(req: Request, uid: string): StoredBnetSession | null {
   return restored;
 }
 
+function cleanEnv(name: string): string {
+  return (process.env[name] || '').trim().replace(/^["']|["']$/g, '');
+}
+
 function isBlizzardConfigured(): boolean {
-  return Boolean(
-    process.env.BLIZZARD_CLIENT_ID?.trim() &&
-      process.env.BLIZZARD_CLIENT_SECRET?.trim()
-  );
+  return Boolean(cleanEnv('BLIZZARD_CLIENT_ID') && cleanEnv('BLIZZARD_CLIENT_SECRET'));
 }
 
 function firstHeaderValue(value: string | string[] | undefined): string {
@@ -177,20 +178,43 @@ function firstHeaderValue(value: string | string[] | undefined): string {
   return raw.split(',')[0].trim();
 }
 
+function sanitizeClientOrigin(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (/^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:run\.app|ai\.studio)$/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d{1,5})?$/i.test(trimmed)) {
+    return trimmed;
+  }
+  return '';
+}
+
 function getAppBaseUrl(req: Request): string {
+  const clientOrigin = sanitizeClientOrigin(req.query.origin);
+  if (clientOrigin) {
+    return clientOrigin;
+  }
+
   const protoRaw = firstHeaderValue(req.headers['x-forwarded-proto']) || req.protocol || 'https';
-  const proto = protoRaw === 'http' || protoRaw === 'https' ? protoRaw : 'https';
   const host = firstHeaderValue(req.headers['x-forwarded-host']) || firstHeaderValue(req.get('host'));
 
-  // Prefer the actual public request host (e.g., ais-dev vs ais-pre) when present so OAuth
-  // cookies and callback origin always match the container the user is visiting.
+  // Prefer the actual public request host (e.g., ais-dev, ais-pre, or *.ai.studio) when present
+  // so OAuth cookies and callback origin always match the container the user is visiting.
   if (
     host &&
     !host.startsWith('localhost') &&
     !host.startsWith('127.0.0.1') &&
     !host.startsWith('0.0.0.0') &&
+    !host.endsWith('.a.run.app') &&
     host.includes('.')
   ) {
+    const proto =
+      host.endsWith('.run.app') || host.endsWith('.ai.studio')
+        ? 'https'
+        : protoRaw === 'http' || protoRaw === 'https'
+          ? protoRaw
+          : 'https';
     return `${proto}://${host}`.replace(/\/+$/, '');
   }
 
@@ -199,7 +223,8 @@ function getAppBaseUrl(req: Request): string {
     return configured.replace(/\/+$/, '');
   }
 
-  return `${proto}://${host || `localhost:${PORT}`}`.replace(/\/+$/, '');
+  const fallbackProto = protoRaw === 'http' || protoRaw === 'https' ? protoRaw : 'https';
+  return `${fallbackProto}://${host || `localhost:${PORT}`}`.replace(/\/+$/, '');
 }
 
 function getRedirectUri(req: Request): string {
@@ -224,7 +249,12 @@ function slugifyRealm(realm: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-function signStatePayload(payload: { uid: string; region: BlizzardRegion; exp: number }): string {
+function signStatePayload(payload: {
+  uid: string;
+  region: BlizzardRegion;
+  redirectUri: string;
+  exp: number;
+}): string {
   const encoded = Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64url');
   const sig = crypto
     .createHmac('sha256', getSessionSecretKey())
@@ -235,7 +265,7 @@ function signStatePayload(payload: { uid: string; region: BlizzardRegion; exp: n
 
 function verifyStatePayload(
   token: string
-): { uid: string; region: BlizzardRegion; exp: number } | null {
+): { uid: string; region: BlizzardRegion; redirectUri?: string; exp: number } | null {
   const parts = token.split('.');
   if (parts.length !== 2) return null;
   const [encoded, sig] = parts;
@@ -252,6 +282,7 @@ function verifyStatePayload(
     const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf-8')) as {
       uid: string;
       region: BlizzardRegion;
+      redirectUri?: string;
       exp: number;
     };
     if (!parsed.uid || !VALID_REGIONS.has(parsed.region) || Date.now() > parsed.exp) {
@@ -357,8 +388,8 @@ async function getClientCredentialsToken(): Promise<string> {
   if (cachedClientToken && Date.now() < cachedClientToken.expiresAt - 60_000) {
     return cachedClientToken.token;
   }
-  const clientId = process.env.BLIZZARD_CLIENT_ID!.trim();
-  const clientSecret = process.env.BLIZZARD_CLIENT_SECRET!.trim();
+  const clientId = cleanEnv('BLIZZARD_CLIENT_ID');
+  const clientSecret = cleanEnv('BLIZZARD_CLIENT_SECRET');
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   const resp = await fetch('https://oauth.battle.net/token', {
@@ -585,15 +616,16 @@ async function startServer() {
 
     const { firebaseUser } = req as Request & { firebaseUser: VerifiedFirebaseUser };
     const region = sanitizeRegion(req.query.region);
+    const redirectUri = getRedirectUri(req);
     const state = signStatePayload({
       uid: firebaseUser.uid,
       region,
+      redirectUri,
       exp: Date.now() + 10 * 60 * 1000,
     });
 
-    const redirectUri = getRedirectUri(req);
     const params = new URLSearchParams({
-      client_id: process.env.BLIZZARD_CLIENT_ID!.trim(),
+      client_id: cleanEnv('BLIZZARD_CLIENT_ID'),
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'wow.profile',
@@ -647,10 +679,10 @@ async function startServer() {
     }
 
     try {
-      const clientId = process.env.BLIZZARD_CLIENT_ID!.trim();
-      const clientSecret = process.env.BLIZZARD_CLIENT_SECRET!.trim();
+      const clientId = cleanEnv('BLIZZARD_CLIENT_ID');
+      const clientSecret = cleanEnv('BLIZZARD_CLIENT_SECRET');
       const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-      const redirectUri = getRedirectUri(req);
+      const redirectUri = state.redirectUri || getRedirectUri(req);
 
       const tokenResp = await fetch('https://oauth.battle.net/token', {
         method: 'POST',

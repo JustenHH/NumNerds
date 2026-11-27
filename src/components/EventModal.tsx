@@ -29,22 +29,30 @@ export const EventModal: React.FC<EventModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const defaultDungeon =
+    FOREVER_INSTANCES.find((i) => i.id === 'the-deadmines') || FOREVER_INSTANCES[0];
   const initialInstance =
-    FOREVER_INSTANCES.find((i) => i.id === existing?.dungeonId) || FOREVER_INSTANCES[1];
+    FOREVER_INSTANCES.find((i) => i.id === existing?.dungeonId) ||
+    (existing?.dungeonId === 'custom' ? null : defaultDungeon);
 
   const [category, setCategory] = useState<EventCategory>(
-    existing?.category || initialInstance.category
+    existing?.category || initialInstance?.category || 'Dungeon'
   );
-  const [dungeonId, setDungeonId] = useState(existing?.dungeonId || initialInstance.id);
+  const [dungeonId, setDungeonId] = useState(
+    existing?.dungeonId === 'custom' ? 'custom' : initialInstance?.id || defaultDungeon.id
+  );
+  const [customDungeonName, setCustomDungeonName] = useState(
+    existing?.dungeonId === 'custom' ? existing.dungeonName : ''
+  );
   const [title, setTitle] = useState(existing?.title || '');
   const [requirementType, setRequirementType] = useState<RequirementType>(
     existing?.requirementType || 'level'
   );
   const [requiredLevel, setRequiredLevel] = useState<number>(
-    existing?.requiredLevel ?? initialInstance.recommendedLevel
+    existing?.requiredLevel ?? initialInstance?.recommendedLevel ?? defaultDungeon.recommendedLevel
   );
   const [partySize, setPartySize] = useState<number>(
-    existing?.partySize ?? initialInstance.partySize
+    existing?.partySize ?? initialInstance?.partySize ?? defaultDungeon.partySize
   );
   const [scheduledAt, setScheduledAt] = useState(
     existing?.scheduledAt || getDefaultDateTimeLocal()
@@ -61,7 +69,10 @@ export const EventModal: React.FC<EventModalProps> = ({
   );
 
   const selectedInstance = useMemo(
-    () => FOREVER_INSTANCES.find((inst) => inst.id === dungeonId) || filteredInstances[0],
+    () =>
+      dungeonId === 'custom'
+        ? null
+        : FOREVER_INSTANCES.find((inst) => inst.id === dungeonId) || filteredInstances[0],
     [dungeonId, filteredInstances]
   );
 
@@ -79,6 +90,7 @@ export const EventModal: React.FC<EventModalProps> = ({
 
   const handleInstanceChange = (nextId: string) => {
     setDungeonId(nextId);
+    if (nextId === 'custom') return;
     const found = FOREVER_INSTANCES.find((i) => i.id === nextId);
     if (found) {
       setPartySize(found.partySize);
@@ -90,7 +102,14 @@ export const EventModal: React.FC<EventModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedInstance) return;
+    const isCustom = dungeonId === 'custom';
+    const resolvedDungeonName = isCustom
+      ? customDungeonName.trim()
+      : selectedInstance?.name || '';
+    if (!resolvedDungeonName) {
+      setError('Please enter a dungeon or instance name.');
+      return;
+    }
     if (!scheduledAt) {
       setError('Please pick a proposed date and time.');
       return;
@@ -100,9 +119,9 @@ export const EventModal: React.FC<EventModalProps> = ({
     try {
       await onSave(
         {
-          title: title.trim() || selectedInstance.name,
-          dungeonId: selectedInstance.id,
-          dungeonName: selectedInstance.name,
+          title: title.trim() || resolvedDungeonName,
+          dungeonId: isCustom ? 'custom' : selectedInstance!.id,
+          dungeonName: resolvedDungeonName,
           category,
           partySize,
           requirementType,
@@ -173,21 +192,33 @@ export const EventModal: React.FC<EventModalProps> = ({
               WoW: Forever {category}
             </label>
             <select
-              value={selectedInstance?.id || ''}
+              value={dungeonId === 'custom' ? 'custom' : selectedInstance?.id || ''}
               onChange={(e) => handleInstanceChange(e.target.value)}
               className="w-full min-h-[44px] rounded-xl border border-slate-700/80 bg-[#0b0e14] px-3.5 text-sm text-white focus:border-[#d4a843] focus:outline-none"
             >
               {filteredInstances.map((inst) => (
                 <option key={inst.id} value={inst.id}>
-                  {inst.name} — Lvl {inst.minLevel === inst.maxLevel ? inst.minLevel : `${inst.minLevel}–${inst.maxLevel}`} ({inst.zone} · {inst.partySize}p)
+                  {inst.isForeverNew ? '★ ' : ''}
+                  {inst.name} — Lvl {inst.minLevel === inst.maxLevel ? inst.minLevel : `${inst.minLevel}–${inst.maxLevel}`} ({inst.zone} · {inst.partySize}p{inst.isForeverNew ? ' · Forever' : ''})
                 </option>
               ))}
+              <option value="custom">Custom / Other Instance...</option>
             </select>
-            {selectedInstance && (
+            {dungeonId === 'custom' ? (
+              <input
+                type="text"
+                required
+                maxLength={FIELD_LIMITS.dungeonNameMax}
+                value={customDungeonName}
+                onChange={(e) => setCustomDungeonName(e.target.value)}
+                placeholder="Enter custom dungeon, raid, or zone name..."
+                className="mt-2.5 w-full min-h-[44px] rounded-xl border border-slate-700/80 bg-[#0b0e14] px-3.5 text-sm text-white placeholder:text-slate-500 focus:border-[#d4a843] focus:outline-none"
+              />
+            ) : selectedInstance ? (
               <p className="mt-1.5 text-xs text-slate-400">
                 {selectedInstance.zone} · Typical level {selectedInstance.minLevel}–{selectedInstance.maxLevel} · {selectedInstance.notes}
               </p>
-            )}
+            ) : null}
           </div>
 
           {/* Custom Event Title */}

@@ -61,6 +61,16 @@ export function useBlizzardSync({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const autoSyncedUidRef = useRef<string | null>(null);
+  const popupPollRef = useRef<number | null>(null);
+
+  const clearPopupPoll = useCallback(() => {
+    if (popupPollRef.current !== null) {
+      window.clearInterval(popupPollRef.current);
+      popupPollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearPopupPoll, [clearPopupPoll]);
 
   const fetchWithAuth = useCallback(
     async (url: string, init?: RequestInit) => {
@@ -86,7 +96,9 @@ export function useBlizzardSync({
     if (!user || !user.emailVerified) return;
     setStatusLoading(true);
     try {
-      const resp = await fetchWithAuth('/api/blizzard/status');
+      const resp = await fetchWithAuth(
+        `/api/blizzard/status?origin=${encodeURIComponent(window.location.origin)}`
+      );
       if (resp.ok) {
         const data = (await resp.json()) as BlizzardStatusResponse;
         setStatus(data);
@@ -181,17 +193,20 @@ export function useBlizzardSync({
       if (
         origin !== window.location.origin &&
         !origin.endsWith('.run.app') &&
+        !origin.endsWith('.ai.studio') &&
         !origin.includes('localhost')
       ) {
         return;
       }
 
       if (event.data?.type === 'BLIZZARD_AUTH_SUCCESS') {
+        clearPopupPoll();
         setConnecting(false);
         const nextRegion = (event.data?.region as BlizzardRegion) || region;
         setRegion(nextRegion);
         void syncNow(nextRegion);
       } else if (event.data?.type === 'BLIZZARD_AUTH_ERROR') {
+        clearPopupPoll();
         setConnecting(false);
         const detail = typeof event.data?.error === 'string' ? event.data.error.trim() : '';
         setSyncError(
@@ -204,21 +219,29 @@ export function useBlizzardSync({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [region, syncNow]);
+  }, [region, syncNow, clearPopupPoll]);
 
   const connectBattleNet = async () => {
     if (!user) return;
+    clearPopupPoll();
     setConnecting(true);
     setSyncError(null);
     setSyncMessage(null);
     try {
       const resp = await fetchWithAuth(
-        `/api/blizzard/auth-url?region=${encodeURIComponent(region)}`
+        `/api/blizzard/auth-url?region=${encodeURIComponent(region)}&origin=${encodeURIComponent(window.location.origin)}`
       );
-      const data = (await resp.json()) as { url?: string; error?: string };
+      const data = (await resp.json()) as {
+        url?: string;
+        error?: string;
+        callbackUrl?: string;
+      };
       if (!resp.ok || !data.url) {
         throw new Error(data.error || 'Could not start Battle.net OAuth.');
       }
+      const usedCallbackUrl =
+        data.callbackUrl || `${window.location.origin}/auth/blizzard/callback`;
+      setStatus((prev) => ({ ...prev, callbackUrl: usedCallbackUrl }));
 
       const popup = window.open(
         data.url,
@@ -230,8 +253,20 @@ export function useBlizzardSync({
         setSyncError(
           'Popup was blocked by your browser. Please allow popups for this site and try again.'
         );
+        return;
       }
+
+      popupPollRef.current = window.setInterval(() => {
+        if (popup.closed) {
+          clearPopupPoll();
+          setConnecting(false);
+          setSyncError(
+            `Battle.net login window closed before finishing. If Battle.net showed 400, verify this exact Redirect URL is saved on develop.battle.net: ${usedCallbackUrl}`
+          );
+        }
+      }, 450);
     } catch (err) {
+      clearPopupPoll();
       setConnecting(false);
       setSyncError(
         err instanceof Error ? err.message : 'Could not connect to Battle.net.'
